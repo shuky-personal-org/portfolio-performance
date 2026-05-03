@@ -43,7 +43,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.OPSPROD_DISPATCH_TOKEN }}
-          repository: itshukychen/investment-ops
+          repository: shuky-personal-org/investment-ops
           event-type: image-published
           client-payload: >
             {
@@ -57,7 +57,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.OPSPROD_DISPATCH_TOKEN }}
-          repository: itshukychen/investment-ops
+          repository: shuky-personal-org/investment-ops
           event-type: image-published
           client-payload: >
             {
