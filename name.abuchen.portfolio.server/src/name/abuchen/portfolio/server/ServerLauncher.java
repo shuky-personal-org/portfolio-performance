@@ -18,6 +18,7 @@ import name.abuchen.portfolio.money.ExchangeRateProvider;
 import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.money.impl.ECBExchangeRateProvider;
 import name.abuchen.portfolio.ui.api.PortfolioApiServer;
+import name.abuchen.portfolio.ui.api.redis.RedisFlexImportListener;
 import name.abuchen.portfolio.ui.api.redis.RedisPriceUpdateListener;
 import name.abuchen.portfolio.ui.api.service.PortfolioFileService;
 import name.abuchen.portfolio.ui.api.service.QuoteFeedApiKeyService;
@@ -39,6 +40,7 @@ public class ServerLauncher implements IApplication
     private PortfolioApiServer apiServer;
     private ScheduledPriceUpdateService scheduledPriceUpdateService;
     private RedisPriceUpdateListener redisPriceUpdateListener;
+    private RedisFlexImportListener redisFlexImportListener;
     private volatile boolean running = true;
 
     @Override
@@ -76,7 +78,8 @@ public class ServerLauncher implements IApplication
                 startScheduledPriceUpdateService();
 
                 startRedisPriceListener();
-                
+                startRedisFlexImportListener();
+
                 PortfolioLog.info("📋 Press Ctrl+C to stop the server");
             }
             catch (Exception e)
@@ -118,6 +121,20 @@ public class ServerLauncher implements IApplication
         if (scheduledPriceUpdateService != null)
         {
             scheduledPriceUpdateService.stop();
+        }
+
+        if (redisFlexImportListener != null)
+        {
+            try
+            {
+                redisFlexImportListener.stop();
+            }
+            catch (Exception e)
+            {
+                PortfolioLog.error("❌ Failed to stop Redis flex import listener: " + e.getMessage());
+                PortfolioLog.error(e);
+            }
+            redisFlexImportListener = null;
         }
 
         if (redisPriceUpdateListener != null)
@@ -372,6 +389,20 @@ public class ServerLauncher implements IApplication
         catch (Exception e)
         {
             PortfolioLog.error("❌ Failed to start Redis price listener: " + e.getMessage());
+            PortfolioLog.error(e);
+        }
+    }
+
+    private void startRedisFlexImportListener()
+    {
+        try
+        {
+            redisFlexImportListener = new RedisFlexImportListener();
+            redisFlexImportListener.start();
+        }
+        catch (Exception e)
+        {
+            PortfolioLog.error("❌ Failed to start Redis flex import listener: " + e.getMessage());
             PortfolioLog.error(e);
         }
     }
