@@ -43,7 +43,7 @@ public class RedisPriceUpdateListener
     private static final String CHANNEL_MARKET_PRICES = "market:prices";
 
     private final PortfolioFileService portfolioFileService;
-    private final RedisConfig config;
+    private final RedisConnectionConfig config;
 
     private volatile boolean running;
     private Thread subscriberThread;
@@ -51,10 +51,10 @@ public class RedisPriceUpdateListener
 
     public RedisPriceUpdateListener()
     {
-        this(PortfolioFileService.getInstance(), RedisConfig.fromEnvironment());
+        this(PortfolioFileService.getInstance(), RedisConnectionConfig.fromEnvironment());
     }
 
-    RedisPriceUpdateListener(PortfolioFileService portfolioFileService, RedisConfig config)
+    RedisPriceUpdateListener(PortfolioFileService portfolioFileService, RedisConnectionConfig config)
     {
         this.portfolioFileService = Objects.requireNonNull(portfolioFileService, "portfolioFileService"); //$NON-NLS-1$
         this.config = Objects.requireNonNull(config, "config"); //$NON-NLS-1$
@@ -412,124 +412,6 @@ public class RedisPriceUpdateListener
         catch (InterruptedException e)
         {
             Thread.currentThread().interrupt();
-        }
-    }
-
-    private static final class RedisConfig
-    {
-        private final boolean enabled;
-        private final String host;
-        private final int port;
-        private final int database;
-        private final Optional<String> username;
-        private final Optional<String> password;
-        private final int timeoutMillis;
-        private final long reconnectDelayMillis;
-
-        private RedisConfig(boolean enabled, String host, int port, int database, Optional<String> username,
-                        Optional<String> password, int timeoutMillis, long reconnectDelayMillis)
-        {
-            this.enabled = enabled && host != null && !host.isBlank();
-            this.host = (host == null || host.isBlank()) ? "localhost" : host;
-            this.port = port;
-            this.database = database;
-            this.username = username;
-            this.password = password;
-            this.timeoutMillis = timeoutMillis;
-            this.reconnectDelayMillis = reconnectDelayMillis;
-        }
-
-        static RedisConfig fromEnvironment()
-        {
-            String enabledEnv = System.getenv("REDIS_ENABLED"); //$NON-NLS-1$
-            boolean enabled = enabledEnv == null || Boolean.parseBoolean(enabledEnv);
-
-            String host = System.getenv("REDIS_HOST"); //$NON-NLS-1$
-            int port = parseInt(System.getenv("REDIS_PORT"), 6379); //$NON-NLS-1$
-            int db = parseInt(System.getenv("REDIS_DB"), 0); //$NON-NLS-1$
-            int timeout = parseInt(System.getenv("REDIS_TIMEOUT_MS"), 2_000); //$NON-NLS-1$
-            long reconnectDelay = parseLong(System.getenv("REDIS_RECONNECT_DELAY_MS"), 5_000L); //$NON-NLS-1$
-
-            Optional<String> username = optionalEnv("REDIS_USERNAME");
-            Optional<String> password = optionalEnv("REDIS_PASSWORD");
-
-            return new RedisConfig(enabled, host, port, db, username, password, timeout, reconnectDelay);
-        }
-
-        boolean isEnabled()
-        {
-            return enabled;
-        }
-
-        String host()
-        {
-            return host;
-        }
-
-        int port()
-        {
-            return port;
-        }
-
-        int database()
-        {
-            return database;
-        }
-
-        Optional<String> username()
-        {
-            return username;
-        }
-
-        Optional<String> password()
-        {
-            return password;
-        }
-
-        int timeoutMillis()
-        {
-            return timeoutMillis;
-        }
-
-        long reconnectDelayMillis()
-        {
-            return reconnectDelayMillis;
-        }
-
-        private static int parseInt(String value, int defaultValue)
-        {
-            if (value == null || value.isBlank())
-                return defaultValue;
-            try
-            {
-                return Integer.parseInt(value.trim());
-            }
-            catch (NumberFormatException e)
-            {
-                return defaultValue;
-            }
-        }
-
-        private static long parseLong(String value, long defaultValue)
-        {
-            if (value == null || value.isBlank())
-                return defaultValue;
-            try
-            {
-                return Long.parseLong(value.trim());
-            }
-            catch (NumberFormatException e)
-            {
-                return defaultValue;
-            }
-        }
-
-        private static Optional<String> optionalEnv(String key)
-        {
-            String value = System.getenv(key);
-            if (value == null || value.isBlank())
-                return Optional.empty();
-            return Optional.of(value.trim());
         }
     }
 }
