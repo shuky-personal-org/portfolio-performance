@@ -103,6 +103,14 @@ public class FlexImportService
             Account account = primaryAccounts.get(currencyCode);
             if (account == null)
                 logger.info("ImportContext.getAccount: no primary account for currency={}", currencyCode); //$NON-NLS-1$
+            else if (!currencyCode.equalsIgnoreCase(account.getCurrencyCode()))
+                logger.warn( //$NON-NLS-1$
+                                "ImportContext.getAccount: currency mismatch — requested={}, account currency={}, name='{}', uuid={}", //$NON-NLS-1$
+                                currencyCode, account.getCurrencyCode(), account.getName(), account.getUUID());
+            else
+                logger.debug( //$NON-NLS-1$
+                                "ImportContext.getAccount: resolved currency={} -> account name='{}', uuid={}, accountCurrency={}", //$NON-NLS-1$
+                                currencyCode, account.getName(), account.getUUID(), account.getCurrencyCode());
             return account;
         }
 
@@ -121,6 +129,14 @@ public class FlexImportService
             if (account == null)
                 logger.info("ImportContext.getSecondaryAccount: no secondary account for currency={}", //$NON-NLS-1$
                                 currencyCode);
+            else if (!currencyCode.equalsIgnoreCase(account.getCurrencyCode()))
+                logger.warn( //$NON-NLS-1$
+                                "ImportContext.getSecondaryAccount: currency mismatch — requested={}, account currency={}, name='{}', uuid={}", //$NON-NLS-1$
+                                currencyCode, account.getCurrencyCode(), account.getName(), account.getUUID());
+            else
+                logger.debug( //$NON-NLS-1$
+                                "ImportContext.getSecondaryAccount: resolved currency={} -> account name='{}', uuid={}, accountCurrency={}", //$NON-NLS-1$
+                                currencyCode, account.getName(), account.getUUID(), account.getCurrencyCode());
             return account;
         }
 
