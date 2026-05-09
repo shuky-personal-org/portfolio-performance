@@ -169,7 +169,7 @@ public class FlexImportService
                                 List.of(MessageFormat.format("Account with UUID {0} not found", entry.getValue())),
                                 0);
             }
-            primaryAccounts.put(entry.getKey(), account);
+            primaryAccounts.put(account.getCurrencyCode(), account);
         }
 
         for (Map.Entry<String, String> entry : currencySecondaryAccountMap.entrySet())
@@ -185,7 +185,7 @@ public class FlexImportService
                                                 entry.getValue())),
                                 0);
             }
-            secondaryAccounts.put(entry.getKey(), account);
+            secondaryAccounts.put(account.getCurrencyCode(), account);
         }
 
         // Get portfolios
@@ -330,9 +330,9 @@ public class FlexImportService
                             .orElse(null);
             if (account != null)
             {
-                primaryAccounts.put(entry.getKey(), account);
-                logger.info("  resolved primary currency={} to account name='{}', uuid={}", entry.getKey(), //$NON-NLS-1$
-                                account.getName(), account.getUUID());
+                primaryAccounts.put(account.getCurrencyCode(), account);
+                logger.info("  resolved primary currency={} (map key from account) to account name='{}', uuid={}", //$NON-NLS-1$
+                                account.getCurrencyCode(), account.getName(), account.getUUID());
             }
             else
             {
@@ -350,9 +350,9 @@ public class FlexImportService
                             .orElse(null);
             if (account != null)
             {
-                secondaryAccounts.put(entry.getKey(), account);
-                logger.info("  resolved secondary currency={} to account name='{}', uuid={}", entry.getKey(), //$NON-NLS-1$
-                                account.getName(), account.getUUID());
+                secondaryAccounts.put(account.getCurrencyCode(), account);
+                logger.info("  resolved secondary currency={} (map key from account) to account name='{}', uuid={}", //$NON-NLS-1$
+                                account.getCurrencyCode(), account.getName(), account.getUUID());
             }
             else
             {
