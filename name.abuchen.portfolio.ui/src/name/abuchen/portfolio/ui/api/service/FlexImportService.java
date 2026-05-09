@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import name.abuchen.portfolio.ui.Messages;
 import name.abuchen.portfolio.datatransfer.Extractor;
 import name.abuchen.portfolio.datatransfer.Extractor.Item;
@@ -23,7 +26,6 @@ import name.abuchen.portfolio.datatransfer.actions.CheckValidTypesAction;
 import name.abuchen.portfolio.datatransfer.actions.DetectDuplicatesAction;
 import name.abuchen.portfolio.datatransfer.actions.InsertAction;
 import name.abuchen.portfolio.datatransfer.ibflex.IBFlexStatementExtractor;
-import name.abuchen.portfolio.PortfolioLog;
 import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Portfolio;
@@ -42,6 +44,8 @@ import name.abuchen.portfolio.ui.wizards.datatransfer.ExtractedEntry;
  */
 public class FlexImportService
 {
+    private static final Logger logger = LoggerFactory.getLogger(FlexImportService.class);
+
     /**
      * Result of the import operation.
      */
@@ -98,8 +102,7 @@ public class FlexImportService
         {
             Account account = primaryAccounts.get(currencyCode);
             if (account == null)
-                PortfolioLog.info(MessageFormat.format("ImportContext.getAccount: no primary account for currency={0}", //$NON-NLS-1$
-                                currencyCode));
+                logger.info("ImportContext.getAccount: no primary account for currency={}", currencyCode); //$NON-NLS-1$
             return account;
         }
 
@@ -107,7 +110,7 @@ public class FlexImportService
         public Portfolio getPortfolio()
         {
             if (primaryPortfolio == null)
-                PortfolioLog.info("ImportContext.getPortfolio: primaryPortfolio is null"); //$NON-NLS-1$
+                logger.info("ImportContext.getPortfolio: primaryPortfolio is null"); //$NON-NLS-1$
             return primaryPortfolio;
         }
 
@@ -116,8 +119,8 @@ public class FlexImportService
         {
             Account account = secondaryAccounts.get(currencyCode);
             if (account == null)
-                PortfolioLog.info(MessageFormat.format("ImportContext.getSecondaryAccount: no secondary account for currency={0}", //$NON-NLS-1$
-                                currencyCode));
+                logger.info("ImportContext.getSecondaryAccount: no secondary account for currency={}", //$NON-NLS-1$
+                                currencyCode);
             return account;
         }
 
@@ -125,7 +128,7 @@ public class FlexImportService
         public Portfolio getSecondaryPortfolio()
         {
             if (secondaryPortfolio == null)
-                PortfolioLog.info("ImportContext.getSecondaryPortfolio: secondaryPortfolio is null"); //$NON-NLS-1$
+                logger.info("ImportContext.getSecondaryPortfolio: secondaryPortfolio is null"); //$NON-NLS-1$
             return secondaryPortfolio;
         }
     }
@@ -297,22 +300,21 @@ public class FlexImportService
                     Map<String, String> currencySecondaryAccountMap, String portfolioUUID,
                     String secondaryPortfolioUUID)
     {
-        PortfolioLog.info(MessageFormat.format(
-                        "previewFlexReport(file={0}, portfolioUUID={1}, secondaryPortfolioUUID={2}, primaryCurrencyMapSize={3}, secondaryCurrencyMapSize={4})", //$NON-NLS-1$
+        logger.info("previewFlexReport(file={}, portfolioUUID={}, secondaryPortfolioUUID={}, primaryCurrencyMapSize={}, secondaryCurrencyMapSize={})", //$NON-NLS-1$
                         file != null ? file.getAbsolutePath() : null,
                         portfolioUUID,
                         secondaryPortfolioUUID,
                         currencyAccountMap != null ? currencyAccountMap.size() : 0,
-                        currencySecondaryAccountMap != null ? currencySecondaryAccountMap.size() : 0));
+                        currencySecondaryAccountMap != null ? currencySecondaryAccountMap.size() : 0);
 
         if (client != null)
         {
-            PortfolioLog.info(MessageFormat.format("Client accounts={0}, portfolios={1}", //$NON-NLS-1$
-                            client.getAccounts().size(), client.getPortfolios().size()));
+            logger.info("Client accounts={}, portfolios={}", client.getAccounts().size(), //$NON-NLS-1$
+                            client.getPortfolios().size());
             for (Account a : client.getAccounts())
-                PortfolioLog.info(MessageFormat.format("  account: name=''{0}'', uuid={1}", a.getName(), a.getUUID())); //$NON-NLS-1$
+                logger.info("  account: name='{}', uuid={}", a.getName(), a.getUUID()); //$NON-NLS-1$
             for (Portfolio p : client.getPortfolios())
-                PortfolioLog.info(MessageFormat.format("  portfolio: name=''{0}'', uuid={1}", p.getName(), p.getUUID())); //$NON-NLS-1$
+                logger.info("  portfolio: name='{}', uuid={}", p.getName(), p.getUUID()); //$NON-NLS-1$
         }
 
         // Build account mappings
@@ -321,8 +323,7 @@ public class FlexImportService
 
         for (Map.Entry<String, String> entry : currencyAccountMap.entrySet())
         {
-            PortfolioLog.info(MessageFormat.format("Resolving primary account mapping currency={0} -> uuid={1}", //$NON-NLS-1$
-                            entry.getKey(), entry.getValue()));
+            logger.info("Resolving primary account mapping currency={} -> uuid={}", entry.getKey(), entry.getValue()); //$NON-NLS-1$
             Account account = client.getAccounts().stream()
                             .filter(a -> entry.getValue().equals(a.getUUID()))
                             .findFirst()
@@ -330,22 +331,19 @@ public class FlexImportService
             if (account != null)
             {
                 primaryAccounts.put(entry.getKey(), account);
-                PortfolioLog.info(MessageFormat.format(
-                                "  resolved primary currency={0} to account name=''{1}'', uuid={2}", //$NON-NLS-1$
-                                entry.getKey(), account.getName(), account.getUUID()));
+                logger.info("  resolved primary currency={} to account name='{}', uuid={}", entry.getKey(), //$NON-NLS-1$
+                                account.getName(), account.getUUID());
             }
             else
             {
-                PortfolioLog.info(MessageFormat.format(
-                                "  FAILED to resolve primary currency={0} (uuid={1}) to an Account in client", //$NON-NLS-1$
-                                entry.getKey(), entry.getValue()));
+                logger.info("  FAILED to resolve primary currency={} (uuid={}) to an Account in client", //$NON-NLS-1$
+                                entry.getKey(), entry.getValue());
             }
         }
 
         for (Map.Entry<String, String> entry : currencySecondaryAccountMap.entrySet())
         {
-            PortfolioLog.info(MessageFormat.format("Resolving secondary account mapping currency={0} -> uuid={1}", //$NON-NLS-1$
-                            entry.getKey(), entry.getValue()));
+            logger.info("Resolving secondary account mapping currency={} -> uuid={}", entry.getKey(), entry.getValue()); //$NON-NLS-1$
             Account account = client.getAccounts().stream()
                             .filter(a -> entry.getValue().equals(a.getUUID()))
                             .findFirst()
@@ -353,15 +351,13 @@ public class FlexImportService
             if (account != null)
             {
                 secondaryAccounts.put(entry.getKey(), account);
-                PortfolioLog.info(MessageFormat.format(
-                                "  resolved secondary currency={0} to account name=''{1}'', uuid={2}", //$NON-NLS-1$
-                                entry.getKey(), account.getName(), account.getUUID()));
+                logger.info("  resolved secondary currency={} to account name='{}', uuid={}", entry.getKey(), //$NON-NLS-1$
+                                account.getName(), account.getUUID());
             }
             else
             {
-                PortfolioLog.info(MessageFormat.format(
-                                "  FAILED to resolve secondary currency={0} (uuid={1}) to an Account in client", //$NON-NLS-1$
-                                entry.getKey(), entry.getValue()));
+                logger.info("  FAILED to resolve secondary currency={} (uuid={}) to an Account in client", //$NON-NLS-1$
+                                entry.getKey(), entry.getValue());
             }
         }
 
@@ -371,10 +367,9 @@ public class FlexImportService
                         .findFirst()
                         .orElse(null);
         if (primaryPortfolio != null)
-            PortfolioLog.info(MessageFormat.format("Resolved primary portfolio uuid={0} -> ''{1}''", //$NON-NLS-1$
-                            portfolioUUID, primaryPortfolio.getName()));
+            logger.info("Resolved primary portfolio uuid={} -> '{}'", portfolioUUID, primaryPortfolio.getName()); //$NON-NLS-1$
         else
-            PortfolioLog.info(MessageFormat.format("FAILED to resolve primary portfolio uuid={0}", portfolioUUID)); //$NON-NLS-1$
+            logger.info("FAILED to resolve primary portfolio uuid={}", portfolioUUID); //$NON-NLS-1$
 
         final Portfolio secondaryPortfolio;
         if (secondaryPortfolioUUID != null && !secondaryPortfolioUUID.isEmpty())
@@ -384,15 +379,15 @@ public class FlexImportService
                             .findFirst()
                             .orElse(null);
             if (secondaryPortfolio != null)
-                PortfolioLog.info(MessageFormat.format("Resolved secondary portfolio uuid={0} -> ''{1}''", //$NON-NLS-1$
-                                secondaryPortfolioUUID, secondaryPortfolio.getName()));
+                logger.info("Resolved secondary portfolio uuid={} -> '{}'", secondaryPortfolioUUID, //$NON-NLS-1$
+                                secondaryPortfolio.getName());
             else
-                PortfolioLog.info(MessageFormat.format("FAILED to resolve secondary portfolio uuid={0}", secondaryPortfolioUUID)); //$NON-NLS-1$
+                logger.info("FAILED to resolve secondary portfolio uuid={}", secondaryPortfolioUUID); //$NON-NLS-1$
         }
         else
         {
             secondaryPortfolio = null;
-            PortfolioLog.info("No secondary portfolio configured (secondaryPortfolioUUID empty)"); //$NON-NLS-1$
+            logger.info("No secondary portfolio configured (secondaryPortfolioUUID empty)"); //$NON-NLS-1$
         }
 
         // Extract items from file
@@ -401,11 +396,10 @@ public class FlexImportService
         List<Extractor.InputFile> inputFiles = List.of(new Extractor.InputFile(file));
 
         List<Extractor.Item> extractedItems = extractor.extract(inputFiles, extractionErrors);
-        PortfolioLog.info(MessageFormat.format("Extraction complete: extractedItems={0}, extractionErrors={1}", //$NON-NLS-1$
-                        extractedItems.size(), extractionErrors.size()));
+        logger.info("Extraction complete: extractedItems={}, extractionErrors={}", extractedItems.size(), //$NON-NLS-1$
+                        extractionErrors.size());
         for (Exception e : extractionErrors)
-            PortfolioLog.info(MessageFormat.format("  extractionError: {0}", //$NON-NLS-1$
-                            e.getMessage() != null ? e.getMessage() : e.getClass().getName()));
+            logger.info("  extractionError: {}", e.getMessage() != null ? e.getMessage() : e.getClass().getName()); //$NON-NLS-1$
 
         // Convert to ExtractedEntry list
         List<ExtractedEntry> entries = extractedItems.stream()
@@ -422,8 +416,7 @@ public class FlexImportService
         // Check entries for errors
         List<String> allErrors = new ArrayList<>();
         checkEntries(entries, context, client, extractionErrors, allErrors);
-        PortfolioLog.info(MessageFormat.format("Validation complete: entries={0}, allErrors={1}", //$NON-NLS-1$
-                        entries.size(), allErrors.size()));
+        logger.info("Validation complete: entries={}, allErrors={}", entries.size(), allErrors.size()); //$NON-NLS-1$
 
         // Convert to DTOs
         List<ExtractedEntryDto> entryDtos = entries.stream()
@@ -485,9 +478,8 @@ public class FlexImportService
             String currency = item.getAmount().getCurrencyCode();
             Account account = primaryAccounts.get(currency);
             if (account == null)
-                PortfolioLog.info(MessageFormat.format(
-                                "Item missing primary account for currency={0} (itemType={1}, source={2})", //$NON-NLS-1$
-                                currency, item.getTypeInformation(), item.getSource()));
+                logger.info("Item missing primary account for currency={} (itemType={}, source={})", //$NON-NLS-1$
+                                currency, item.getTypeInformation(), item.getSource());
             if (account != null)
             {
                 dto.setAccountPrimaryName(account.getName());
@@ -506,9 +498,8 @@ public class FlexImportService
                 String targetCurrency = transfer.getTargetTransaction().getCurrencyCode();
                 accountSecondary = secondaryAccounts.get(targetCurrency);
                 if (accountSecondary == null)
-                    PortfolioLog.info(MessageFormat.format(
-                                    "AccountTransferItem missing secondary account for targetCurrency={0} (itemType={1}, source={2})", //$NON-NLS-1$
-                                    targetCurrency, item.getTypeInformation(), item.getSource()));
+                    logger.info("AccountTransferItem missing secondary account for targetCurrency={} (itemType={}, source={})", //$NON-NLS-1$
+                                    targetCurrency, item.getTypeInformation(), item.getSource());
             }
         }
         if (accountSecondary != null)
