@@ -34,7 +34,7 @@ public class ScheduledPriceUpdateService {
     private static final Logger logger = LoggerFactory.getLogger(ScheduledPriceUpdateService.class);
     
     // Update intervals
-    private static final int LATEST_UPDATE_INTERVAL_SECONDS = 3600; // 1 hour
+    private static final int LATEST_UPDATE_INTERVAL_SECONDS = 60; // 1 minute
     private static final int HISTORIC_UPDATE_INTERVAL_MINUTES = 360;
     
     private final PortfolioFileService portfolioFileService;
