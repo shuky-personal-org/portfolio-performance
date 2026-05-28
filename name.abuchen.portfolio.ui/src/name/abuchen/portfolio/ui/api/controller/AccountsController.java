@@ -1,6 +1,7 @@
 package name.abuchen.portfolio.ui.api.controller;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,14 +22,18 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import name.abuchen.portfolio.model.Account;
+import name.abuchen.portfolio.model.AccountTransaction;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.money.CurrencyConverter;
+import name.abuchen.portfolio.ui.api.dto.AccountValueUpdateDto;
 import name.abuchen.portfolio.ui.api.dto.AccountDto;
+import name.abuchen.portfolio.ui.api.dto.TransactionDto;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
 import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.AccountSnapshot;
+import name.abuchen.portfolio.ui.api.service.AccountValueAdjustmentService;
 import name.abuchen.portfolio.ui.api.dto.ValueDataPointDto;
 
 /**
@@ -250,6 +255,110 @@ public class AccountsController extends BaseController {
                 e.getMessage());
         }
     }
+
+    /**
+     * Set the account to a target value by creating a balancing deposit or
+     * withdrawal transaction.
+     *
+     * @param portfolioId The portfolio ID
+     * @param accountUuid The account UUID
+     * @param valueUpdate Target value data
+     * @return Response containing the created adjustment transaction, if any
+     */
+    @PUT
+    @Path("/{accountUuid}/value")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response setAccountValue(@PathParam("portfolioId") String portfolioId,
+                                    @PathParam("accountUuid") String accountUuid,
+                                    AccountValueUpdateDto valueUpdate) {
+        try {
+            logger.info("Setting value for account {} in portfolio {}", accountUuid, portfolioId);
+
+            if (valueUpdate == null || valueUpdate.getValue() == null) {
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "Missing value",
+                    "Request body must contain a numeric value");
+            }
+
+            double requestedValue = valueUpdate.getValue().doubleValue();
+            if (!Double.isFinite(requestedValue)) {
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "Invalid value",
+                    "Account value must be a finite number");
+            }
+
+            long targetAmount = toInternalAmount(requestedValue);
+            LocalDateTime dateTime = valueUpdate.getDateTime() != null
+                ? valueUpdate.getDateTime()
+                : LocalDateTime.now();
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before setting account values");
+            }
+
+            Account account = client.getAccounts().stream()
+                .filter(a -> accountUuid.equals(a.getUUID()))
+                .findFirst()
+                .orElse(null);
+
+            if (account == null) {
+                logger.warn("Account not found: {} in portfolio: {}", accountUuid, portfolioId);
+                return createErrorResponse(Response.Status.NOT_FOUND,
+                    "Account not found",
+                    "Account with UUID " + accountUuid + " not found in portfolio");
+            }
+
+            var adjustment = AccountValueAdjustmentService.setValue(
+                account,
+                dateTime,
+                targetAmount,
+                valueUpdate.getNote(),
+                valueUpdate.getSource());
+
+            if (adjustment.isModified()) {
+                client.markDirty();
+                portfolioFileService.saveFile(portfolioId);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("accountUuid", accountUuid);
+            response.put("accountName", account.getName());
+            response.put("currencyCode", account.getCurrencyCode());
+            response.put("previousValue", adjustment.previousAmount() / Values.Amount.divider());
+            response.put("newValue", adjustment.targetAmount() / Values.Amount.divider());
+            response.put("adjustmentAmount", adjustment.deltaAmount() / Values.Amount.divider());
+            response.put("wasModified", adjustment.isModified());
+
+            if (adjustment.transaction() != null)
+                response.put("transaction", convertAccountTransactionToDto(adjustment.transaction(), account));
+
+            logger.info("Set account {} ({}) value from {} to {} in portfolio {}",
+                account.getName(), accountUuid, adjustment.previousAmount(), adjustment.targetAmount(), portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid account value update for account {} in portfolio {}: {}",
+                accountUuid, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid value",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error setting value for account {} in portfolio {}: {}",
+                accountUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
+    }
     
     /**
      * Create a new account.
@@ -358,6 +467,33 @@ public class AccountsController extends BaseController {
             dto.setCurrentValueInBaseCurrency(0.0);
         }
         
+        return dto;
+    }
+
+    private long toInternalAmount(double value) {
+        double internalAmount = value * Values.Amount.divider();
+
+        if (internalAmount > Long.MAX_VALUE || internalAmount < Long.MIN_VALUE)
+            throw new IllegalArgumentException("Account value is outside the supported range");
+
+        return Math.round(internalAmount);
+    }
+
+    private TransactionDto convertAccountTransactionToDto(AccountTransaction transaction, Account account) {
+        TransactionDto dto = new TransactionDto();
+
+        dto.setUuid(transaction.getUUID());
+        dto.setDateTime(transaction.getDateTime());
+        dto.setType(transaction.getType().name());
+        dto.setTransactionType("ACCOUNT");
+        dto.setCurrencyCode(transaction.getCurrencyCode());
+        dto.setAmount(transaction.getAmount() / Values.Amount.divider());
+        dto.setNote(transaction.getNote());
+        dto.setSource(transaction.getSource());
+        dto.setOwnerUuid(account.getUUID());
+        dto.setOwnerName(account.getName());
+        dto.setUpdatedAt(transaction.getUpdatedAt());
+
         return dto;
     }
 }
