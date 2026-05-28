@@ -44,6 +44,7 @@ import name.abuchen.portfolio.model.AccountTransferEntry;
 import name.abuchen.portfolio.model.BuySellEntry;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.PortfolioTransaction;
+import name.abuchen.portfolio.model.PortfolioTransferEntry;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Transaction;
 import name.abuchen.portfolio.model.Transaction.Unit;
@@ -191,6 +192,8 @@ public class IBFlexStatementExtractor implements Extractor
         private static final String ASSETKEY_CERTIFICATE = "IOPT";
         private static final String ASSETKEY_FUTURE_OPTION = "FOP";
         private static final String ASSETKEY_WARRANTS = "WAR";
+        private static final String TRANSFER_DIRECTION_IN = "IN";
+        private static final String TRANSFER_DIRECTION_OUT = "OUT";
 
         private Document document;
         private List<Exception> errors = new ArrayList<>();
@@ -480,18 +483,66 @@ public class IBFlexStatementExtractor implements Extractor
         };
 
         /**
+         * Constructs account or portfolio transfer items based on IB Flex transfer rows.
+         */
+        private Consumer<Element> buildTransfer = element -> {
+            if (ASSETKEY_CASH.equals(element.getAttribute("assetCategory")))
+                buildAccountTransfer(element);
+            else
+                buildPortfolioTransfer(element);
+        };
+
+        private void buildAccountTransfer(Element element)
+        {
+            Boolean isOutbound = getOutboundTransferDirection(element);
+            if (isOutbound == null)
+                return;
+
+            long amount = Math.abs(asAmountOrZero(element.getAttribute("cashTransfer")));
+            if (amount == 0)
+                return;
+
+            AccountTransferEntry accountTransfer = new AccountTransferEntry();
+            accountTransfer.setDate(extractTransferDate(element));
+            accountTransfer.setCurrencyCode(asCurrencyCode(element.getAttribute("currency")));
+            accountTransfer.setAmount(amount);
+            accountTransfer.setNote(extractTransferNote(element, isOutbound));
+
+            results.add(new AccountTransferItem(accountTransfer, isOutbound));
+        }
+
+        private void buildPortfolioTransfer(Element element)
+        {
+            if (!isSecurityAssetCategory(element.getAttribute("assetCategory")))
+                return;
+
+            Boolean isOutbound = getOutboundTransferDirection(element);
+            if (isOutbound == null)
+                return;
+
+            long shares = extractTransferShares(element);
+            if (shares == 0)
+                return;
+
+            PortfolioTransferEntry portfolioTransfer = new PortfolioTransferEntry();
+            portfolioTransfer.setDate(extractTransferDate(element));
+            portfolioTransfer.setCurrencyCode(asCurrencyCode(element.getAttribute("currency")));
+            portfolioTransfer.setAmount(Math.abs(asAmountOrZero(element.getAttribute("positionAmount"))));
+            portfolioTransfer.setShares(shares);
+            portfolioTransfer.setSecurity(this.getOrCreateSecurity(element, true));
+            portfolioTransfer.setNote(extractTransferNote(element, isOutbound));
+
+            results.add(new PortfolioTransferItem(portfolioTransfer, isOutbound));
+        }
+
+        /**
          * Constructs a BuySellEntryItem based on the information provided in the XML element.
          */
         private Consumer<Element> buildPortfolioTransaction = element -> {
             BuySellEntry portfolioTransaction = new BuySellEntry();
 
             // Check if the asset category is supported
-            if (!Arrays.asList(ASSETKEY_STOCK, //
-                            ASSETKEY_FUND, //
-                            ASSETKEY_OPTION, //
-                            ASSETKEY_CERTIFICATE, //
-                            ASSETKEY_FUTURE_OPTION, //
-                            ASSETKEY_WARRANTS).contains(element.getAttribute("assetCategory")))
+            if (!isSecurityAssetCategory(element.getAttribute("assetCategory")))
                 return;
 
             // Check if the level of detail is supported
@@ -818,6 +869,82 @@ public class IBFlexStatementExtractor implements Extractor
                 return ExtractorUtils.asDate(element.getAttribute("tradeDate"));
             }
         }
+
+        private LocalDateTime extractTransferDate(Element element)
+        {
+            String date = element.getAttribute("date");
+            if (date.isEmpty())
+                date = element.getAttribute("reportDate");
+            if (date.isEmpty())
+                date = element.getAttribute("dateTime");
+
+            if (date.length() == 15)
+                return ExtractorUtils.asDate(date.substring(0, 8), date.substring(9, 15));
+
+            return ExtractorUtils.asDate(date);
+        }
+
+        private long extractTransferShares(Element element)
+        {
+            if (element.getAttribute("quantity").isEmpty())
+                return 0;
+
+            double qty = Math.abs(Double.parseDouble(element.getAttribute("quantity")));
+            return Math.round(qty * Values.Share.factor());
+        }
+
+        private Boolean getOutboundTransferDirection(Element element)
+        {
+            String direction = element.getAttribute("direction");
+            if (TRANSFER_DIRECTION_OUT.equals(direction))
+                return Boolean.TRUE;
+            if (TRANSFER_DIRECTION_IN.equals(direction))
+                return Boolean.FALSE;
+
+            return null;
+        }
+
+        private boolean isSecurityAssetCategory(String assetCategory)
+        {
+            return Arrays.asList(ASSETKEY_STOCK, //
+                            ASSETKEY_FUND, //
+                            ASSETKEY_OPTION, //
+                            ASSETKEY_CERTIFICATE, //
+                            ASSETKEY_FUTURE_OPTION, //
+                            ASSETKEY_WARRANTS).contains(assetCategory);
+        }
+
+        private long asAmountOrZero(String value)
+        {
+            if (value == null || value.isEmpty())
+                return 0;
+
+            return asAmount(value);
+        }
+
+        private String extractTransferNote(Element element, boolean isOutbound)
+        {
+            String sourceAccount = isOutbound ? element.getAttribute("accountId") : element.getAttribute("account");
+            String targetAccount = isOutbound ? element.getAttribute("account") : element.getAttribute("accountId");
+
+            StringBuilder transferNote = new StringBuilder();
+            if (!element.getAttribute("type").isEmpty())
+                transferNote.append(element.getAttribute("type")).append(" ");
+
+            if (!sourceAccount.isEmpty() || !targetAccount.isEmpty())
+            {
+                transferNote.append("transfer from ");
+                transferNote.append(sourceAccount.isEmpty() ? "?" : sourceAccount);
+                transferNote.append(" to ");
+                transferNote.append(targetAccount.isEmpty() ? "?" : targetAccount);
+            }
+            else
+            {
+                transferNote.append("transfer");
+            }
+
+            return concatenate(transferNote.toString(), extractNote(element), " | ");
+        }
         
         /**
          * Extract the trade and transaction ids as note.
@@ -903,6 +1030,9 @@ public class IBFlexStatementExtractor implements Extractor
 
             // Process all CashTransaction
             importModelObjects("CashTransaction", buildAccountTransaction);
+
+            // Process all account and portfolio transfers
+            importModelObjects("Transfer", buildTransfer);
 
             // Process all CorporateTransactions
             importModelObjects("CorporateAction", buildCorporateTransaction);
