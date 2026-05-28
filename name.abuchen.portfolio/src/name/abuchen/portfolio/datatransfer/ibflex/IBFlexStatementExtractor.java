@@ -44,7 +44,6 @@ import name.abuchen.portfolio.model.AccountTransferEntry;
 import name.abuchen.portfolio.model.BuySellEntry;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.PortfolioTransaction;
-import name.abuchen.portfolio.model.PortfolioTransferEntry;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Transaction;
 import name.abuchen.portfolio.model.Transaction.Unit;
@@ -502,13 +501,13 @@ public class IBFlexStatementExtractor implements Extractor
             if (amount == 0)
                 return;
 
-            AccountTransferEntry accountTransfer = new AccountTransferEntry();
-            accountTransfer.setDate(extractTransferDate(element));
-            accountTransfer.setCurrencyCode(asCurrencyCode(element.getAttribute("currency")));
-            accountTransfer.setAmount(amount);
-            accountTransfer.setNote(extractTransferNote(element, isOutbound));
+            AccountTransaction accountTransaction = new AccountTransaction();
+            accountTransaction.setType(isOutbound ? AccountTransaction.Type.REMOVAL : AccountTransaction.Type.DEPOSIT);
+            accountTransaction.setDateTime(extractTransferDate(element));
+            accountTransaction.setMonetaryAmount(Money.of(asCurrencyCode(element.getAttribute("currency")), amount));
+            accountTransaction.setNote(extractTransferNote(element, isOutbound));
 
-            results.add(new AccountTransferItem(accountTransfer, isOutbound));
+            results.add(new TransactionItem(accountTransaction));
         }
 
         private void buildPortfolioTransfer(Element element)
@@ -524,15 +523,17 @@ public class IBFlexStatementExtractor implements Extractor
             if (shares == 0)
                 return;
 
-            PortfolioTransferEntry portfolioTransfer = new PortfolioTransferEntry();
-            portfolioTransfer.setDate(extractTransferDate(element));
+            PortfolioTransaction portfolioTransfer = new PortfolioTransaction();
+            portfolioTransfer.setType(isOutbound ? PortfolioTransaction.Type.DELIVERY_OUTBOUND
+                            : PortfolioTransaction.Type.DELIVERY_INBOUND);
+            portfolioTransfer.setDateTime(extractTransferDate(element));
             portfolioTransfer.setCurrencyCode(asCurrencyCode(element.getAttribute("currency")));
             portfolioTransfer.setAmount(Math.abs(asAmountOrZero(element.getAttribute("positionAmount"))));
             portfolioTransfer.setShares(shares);
             portfolioTransfer.setSecurity(this.getOrCreateSecurity(element, true));
             portfolioTransfer.setNote(extractTransferNote(element, isOutbound));
 
-            results.add(new PortfolioTransferItem(portfolioTransfer, isOutbound));
+            results.add(new TransactionItem(portfolioTransfer));
         }
 
         /**

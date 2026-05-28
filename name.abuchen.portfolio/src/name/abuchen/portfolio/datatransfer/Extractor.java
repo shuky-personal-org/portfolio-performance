@@ -483,17 +483,10 @@ public interface Extractor
     static class PortfolioTransferItem extends Item
     {
         private final PortfolioTransferEntry entry;
-        private final boolean isOutbound;
 
         public PortfolioTransferItem(PortfolioTransferEntry entry)
         {
-            this(entry, true);
-        }
-
-        public PortfolioTransferItem(PortfolioTransferEntry entry, boolean isOutbound)
-        {
             this.entry = entry;
-            this.isOutbound = isOutbound;
         }
 
         @Override
@@ -567,10 +560,7 @@ public interface Extractor
                 return new Status(Status.Code.ERROR, MessageFormat.format(Messages.CSVImportMissingField,
                                 Messages.CSVColumn_PortfolioName2nd));
 
-            if (isOutbound)
-                return action.process(entry, portfolio, portfolioSecondary);
-            else
-                return action.process(entry, portfolioSecondary, portfolio);
+            return action.process(entry, portfolio, portfolioSecondary);
         }
     }
 

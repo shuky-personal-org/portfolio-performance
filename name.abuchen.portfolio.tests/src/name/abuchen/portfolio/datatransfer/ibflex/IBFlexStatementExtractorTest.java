@@ -42,19 +42,15 @@ import org.junit.Test;
 
 import name.abuchen.portfolio.Messages;
 import name.abuchen.portfolio.datatransfer.Extractor;
-import name.abuchen.portfolio.datatransfer.Extractor.AccountTransferItem;
 import name.abuchen.portfolio.datatransfer.Extractor.BuySellEntryItem;
 import name.abuchen.portfolio.datatransfer.Extractor.Item;
-import name.abuchen.portfolio.datatransfer.Extractor.PortfolioTransferItem;
 import name.abuchen.portfolio.datatransfer.Extractor.SecurityItem;
 import name.abuchen.portfolio.datatransfer.Extractor.TransactionItem;
 import name.abuchen.portfolio.datatransfer.actions.AssertImportActions;
 import name.abuchen.portfolio.model.AccountTransaction;
-import name.abuchen.portfolio.model.AccountTransferEntry;
 import name.abuchen.portfolio.model.BuySellEntry;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.PortfolioTransaction;
-import name.abuchen.portfolio.model.PortfolioTransferEntry;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Transaction.Unit;
 import name.abuchen.portfolio.money.CurrencyUnit;
@@ -3359,36 +3355,65 @@ public class IBFlexStatementExtractorTest
         assertThat(errors, empty());
         assertThat(countSecurities(results), is(1L));
         assertThat(countBuySell(results), is(0L));
-        assertThat(countAccountTransactions(results), is(0L));
-        assertThat(results.stream().filter(PortfolioTransferItem.class::isInstance).count(), is(1L));
-        assertThat(results.stream().filter(AccountTransferItem.class::isInstance).count(), is(1L));
+        assertThat(countAccountTransactions(results), is(2L));
         assertThat(results.size(), is(3));
         new AssertImportActions().check(results, "USD");
 
-        var portfolioTransfer = (PortfolioTransferEntry) results.stream()
-                        .filter(PortfolioTransferItem.class::isInstance).findFirst()
-                        .orElseThrow(IllegalArgumentException::new).getSubject();
+        var portfolioTransfer = (PortfolioTransaction) results.stream().filter(TransactionItem.class::isInstance)
+                        .map(Item::getSubject).filter(PortfolioTransaction.class::isInstance).findFirst()
+                        .orElseThrow(IllegalArgumentException::new);
 
-        assertThat(portfolioTransfer.getSourceTransaction().getType(), is(PortfolioTransaction.Type.TRANSFER_OUT));
-        assertThat(portfolioTransfer.getTargetTransaction().getType(), is(PortfolioTransaction.Type.TRANSFER_IN));
-        assertThat(portfolioTransfer.getSourceTransaction().getDateTime(), is(LocalDateTime.parse("2026-05-26T00:00")));
-        assertThat(portfolioTransfer.getSourceTransaction().getShares(), is(Values.Share.factorize(1)));
-        assertThat(portfolioTransfer.getSourceTransaction().getSecurity().getIsin(), is("IE00B3F81409"));
-        assertThat(portfolioTransfer.getSourceTransaction().getSecurity().getWkn(), is("297484323"));
-        assertThat(portfolioTransfer.getSourceTransaction().getMonetaryAmount(),
+        assertThat(portfolioTransfer.getType(), is(PortfolioTransaction.Type.DELIVERY_INBOUND));
+        assertThat(portfolioTransfer.getDateTime(), is(LocalDateTime.parse("2026-05-26T00:00")));
+        assertThat(portfolioTransfer.getShares(), is(Values.Share.factorize(1)));
+        assertThat(portfolioTransfer.getSecurity().getIsin(), is("IE00B3F81409"));
+        assertThat(portfolioTransfer.getSecurity().getWkn(), is("297484323"));
+        assertThat(portfolioTransfer.getMonetaryAmount(),
                         is(Money.of(CurrencyUnit.USD, Values.Amount.factorize(4.39))));
         assertThat(portfolioTransfer.getNote(),
                         is("INTERNAL transfer from U25885452 to U19253415 | Transaction-ID: 6007296419"));
 
-        var accountTransfer = (AccountTransferEntry) results.stream().filter(AccountTransferItem.class::isInstance)
-                        .findFirst().orElseThrow(IllegalArgumentException::new).getSubject();
+        var accountTransfer = (AccountTransaction) results.stream().filter(TransactionItem.class::isInstance)
+                        .map(Item::getSubject).filter(AccountTransaction.class::isInstance).findFirst()
+                        .orElseThrow(IllegalArgumentException::new);
 
-        assertThat(accountTransfer.getSourceTransaction().getType(), is(AccountTransaction.Type.TRANSFER_OUT));
-        assertThat(accountTransfer.getTargetTransaction().getType(), is(AccountTransaction.Type.TRANSFER_IN));
-        assertThat(accountTransfer.getSourceTransaction().getDateTime(), is(LocalDateTime.parse("2026-05-26T00:00")));
-        assertThat(accountTransfer.getSourceTransaction().getMonetaryAmount(),
+        assertThat(accountTransfer.getType(), is(AccountTransaction.Type.DEPOSIT));
+        assertThat(accountTransfer.getDateTime(), is(LocalDateTime.parse("2026-05-26T00:00")));
+        assertThat(accountTransfer.getMonetaryAmount(),
                         is(Money.of(CurrencyUnit.USD, Values.Amount.factorize(20000))));
         assertThat(accountTransfer.getNote(),
                         is("INTERNAL transfer from U25885452 to U19253415 | Transaction-ID: 6007296194"));
+    }
+
+    @Test
+    public void testIBFlexStatementFile26() throws IOException
+    {
+        var extractor = new IBFlexStatementExtractor(new Client());
+
+        var activityStatement = getClass().getResourceAsStream("testIBFlexStatementFile26.xml");
+        var tempFile = createTempFile(activityStatement);
+
+        var errors = new ArrayList<Exception>();
+
+        var results = extractor.extract(Collections.singletonList(tempFile), errors);
+
+        assertThat(errors, empty());
+        assertThat(countSecurities(results), is(1L));
+        assertThat(countBuySell(results), is(0L));
+        assertThat(countAccountTransactions(results), is(1L));
+        assertThat(results.size(), is(2));
+        new AssertImportActions().check(results, "USD");
+
+        var portfolioTransfer = (PortfolioTransaction) results.stream().filter(TransactionItem.class::isInstance)
+                        .findFirst().orElseThrow(IllegalArgumentException::new).getSubject();
+
+        assertThat(portfolioTransfer.getType(), is(PortfolioTransaction.Type.DELIVERY_OUTBOUND));
+        assertThat(portfolioTransfer.getDateTime(), is(LocalDateTime.parse("2026-05-26T00:00")));
+        assertThat(portfolioTransfer.getShares(), is(Values.Share.factorize(2)));
+        assertThat(portfolioTransfer.getSecurity().getIsin(), is("IE00B3F81409"));
+        assertThat(portfolioTransfer.getMonetaryAmount(),
+                        is(Money.of(CurrencyUnit.USD, Values.Amount.factorize(8.79))));
+        assertThat(portfolioTransfer.getNote(),
+                        is("INTERNAL transfer from U19253415 to U25885452 | Transaction-ID: 6007296420"));
     }
 }
