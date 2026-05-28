@@ -2,11 +2,16 @@ package name.abuchen.portfolio.ui.api.controller;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
+import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.ws.rs.Consumes;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -17,23 +22,22 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import name.abuchen.portfolio.model.Client;
-import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.money.CurrencyConverter;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
+import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
-import name.abuchen.portfolio.snapshot.ClientSnapshot;
 import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot;
 import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot.CategoryType;
+import name.abuchen.portfolio.snapshot.ClientSnapshot;
 import name.abuchen.portfolio.snapshot.PerformanceIndex;
 import name.abuchen.portfolio.snapshot.ReportingPeriod;
 import name.abuchen.portfolio.ui.api.dto.PerformanceCalculationDto;
 import name.abuchen.portfolio.ui.api.dto.PerformanceCalculationDto.MoneyValueDto;
 import name.abuchen.portfolio.ui.api.dto.PortfolioFileInfo;
+import name.abuchen.portfolio.ui.api.dto.PortfolioFileRequest;
 import name.abuchen.portfolio.ui.api.service.QuoteFeedApiKeyService;
 import name.abuchen.portfolio.util.Interval;
-import java.time.LocalDate;
-import java.util.ArrayList;
 
 /**
  * REST Controller for portfolio file operations.
@@ -66,6 +70,131 @@ public class PortfolioController extends BaseController {
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, 
                 "INTERNAL_ERROR", 
                 "Failed to list portfolios: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Create a new empty portfolio file.
+     * 
+     * @param request The requested portfolio file name or path
+     * @return Created portfolio file information
+     */
+    @POST
+    @Path("")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response createPortfolio(PortfolioFileRequest request) {
+        try {
+            logger.info("Creating portfolio file");
+
+            PortfolioFileInfo fileInfo = portfolioFileService.createPortfolioFile(getRequestedPath(request));
+
+            return Response.status(Response.Status.CREATED).entity(fileInfo).build();
+
+        } catch (FileAlreadyExistsException e) {
+            logger.warn("Portfolio file already exists: {}", e.getMessage());
+            return createErrorResponse(Response.Status.CONFLICT,
+                "PORTFOLIO_ALREADY_EXISTS",
+                e.getMessage());
+
+        } catch (IllegalArgumentException | SecurityException e) {
+            logger.warn("Invalid portfolio create request: {}", e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "INVALID_REQUEST",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.error("Failed to create portfolio", e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to create portfolio: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Duplicate an existing portfolio file.
+     * 
+     * @param portfolioId The source portfolio ID
+     * @param request Optional requested portfolio file name or path
+     * @return Duplicated portfolio file information
+     */
+    @POST
+    @Path("/{portfolioId}/duplicate")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response duplicatePortfolio(@PathParam("portfolioId") String portfolioId, PortfolioFileRequest request) {
+        try {
+            logger.info("Duplicating portfolio file: {}", portfolioId);
+
+            PortfolioFileInfo fileInfo = portfolioFileService.duplicatePortfolioFile(portfolioId, getOptionalRequestedPath(request));
+
+            return Response.status(Response.Status.CREATED).entity(fileInfo).build();
+
+        } catch (FileAlreadyExistsException e) {
+            logger.warn("Portfolio duplicate target already exists: {}", e.getMessage());
+            return createErrorResponse(Response.Status.CONFLICT,
+                "PORTFOLIO_ALREADY_EXISTS",
+                e.getMessage());
+
+        } catch (FileNotFoundException e) {
+            logger.warn("Portfolio not found for duplication: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "PORTFOLIO_NOT_FOUND",
+                e.getMessage());
+
+        } catch (IllegalArgumentException | SecurityException e) {
+            logger.warn("Invalid portfolio duplicate request: {}", e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "INVALID_REQUEST",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.error("Failed to duplicate portfolio: {}", portfolioId, e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to duplicate portfolio: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Remove a portfolio file by moving it to the deleted folder.
+     * 
+     * @param portfolioId The portfolio ID
+     * @return Information about the moved file
+     */
+    @DELETE
+    @Path("/{portfolioId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response removePortfolio(@PathParam("portfolioId") String portfolioId) {
+        try {
+            logger.info("Removing portfolio file: {}", portfolioId);
+
+            PortfolioFileInfo deletedFileInfo = portfolioFileService.removePortfolioFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("deletedPath", deletedFileInfo.getPath());
+
+            return Response.ok(response).build();
+
+        } catch (FileNotFoundException e) {
+            logger.warn("Portfolio not found for removal: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "PORTFOLIO_NOT_FOUND",
+                e.getMessage());
+
+        } catch (IllegalArgumentException | SecurityException e) {
+            logger.warn("Invalid portfolio removal request: {}", e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "INVALID_REQUEST",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.error("Failed to remove portfolio: {}", portfolioId, e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to remove portfolio: " + e.getMessage());
         }
     }
     
@@ -491,6 +620,37 @@ public class PortfolioController extends BaseController {
                 "Internal server error", 
                 e.getMessage());
         }
+    }
+    
+    /**
+     * Resolve the required file path/name from a request.
+     */
+    private String getRequestedPath(PortfolioFileRequest request) {
+        String requestedPath = getOptionalRequestedPath(request);
+        if (requestedPath == null) {
+            throw new IllegalArgumentException("Portfolio file name or path is required");
+        }
+
+        return requestedPath;
+    }
+
+    /**
+     * Resolve the optional file path/name from a request.
+     */
+    private String getOptionalRequestedPath(PortfolioFileRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        if (request.getPath() != null && !request.getPath().trim().isEmpty()) {
+            return request.getPath();
+        }
+
+        if (request.getName() != null && !request.getName().trim().isEmpty()) {
+            return request.getName();
+        }
+
+        return null;
     }
     
     /**
