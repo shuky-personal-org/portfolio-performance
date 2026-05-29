@@ -319,23 +319,24 @@ public class RedisFlexImportListener
                             ? payload.getAsJsonObject("import_config") //$NON-NLS-1$
                             : new JsonObject();
 
-            String targetPortfolioId = readString(payload, "portfolio_id").orElse(portfolioId); //$NON-NLS-1$
-            String targetPortfolioUuid = readString(importConfig, "portfolioUUID").orElse(portfolioUuid); //$NON-NLS-1$
-            Optional<String> targetSecondaryPortfolioUuid = readString(importConfig, "secondaryPortfolioUUID") //$NON-NLS-1$
-                            .or(() -> secondaryPortfolioUuid);
+            // Legacy env fallbacks are intentionally disabled for automated imports. The env fields are
+            // still parsed above so reverting to the old single-portfolio flow is straightforward.
+            String targetPortfolioId = readString(payload, "portfolio_id").orElse(""); //$NON-NLS-1$
+            String targetPortfolioUuid = readString(importConfig, "portfolioUUID").orElse(""); //$NON-NLS-1$
+            Optional<String> targetSecondaryPortfolioUuid = readString(importConfig, "secondaryPortfolioUUID"); //$NON-NLS-1$
             Map<String, String> targetCurrencyAccountMap = readStringMap(importConfig, "currencyAccountMap") //$NON-NLS-1$
-                            .orElse(currencyAccountMap);
+                            .orElse(Map.of());
             Map<String, String> targetCurrencySecondaryAccountMap = readStringMap(importConfig,
-                            "currencySecondaryAccountMap").orElse(currencySecondaryAccountMap); //$NON-NLS-1$
+                            "currencySecondaryAccountMap").orElse(Map.of()); //$NON-NLS-1$
             boolean targetConvertBuySellToDelivery = readBoolean(importConfig, "convertBuySellToDelivery") //$NON-NLS-1$
-                            .orElse(convertBuySellToDelivery);
-            boolean targetRemoveDividends = readBoolean(importConfig, "removeDividends").orElse(removeDividends); //$NON-NLS-1$
-            boolean targetImportNotes = readBoolean(importConfig, "importNotes").orElse(importNotes); //$NON-NLS-1$
+                            .orElse(false);
+            boolean targetRemoveDividends = readBoolean(importConfig, "removeDividends").orElse(false); //$NON-NLS-1$
+            boolean targetImportNotes = readBoolean(importConfig, "importNotes").orElse(true); //$NON-NLS-1$
 
             if (targetPortfolioId.isEmpty() || targetPortfolioUuid.isEmpty() || targetCurrencyAccountMap.isEmpty())
             {
                 logger.warn(
-                                "Skipping Redis flex import: portfolio_id, portfolioUUID, or currencyAccountMap missing in message and env fallback"); //$NON-NLS-1$
+                                "Skipping Redis flex import: portfolio_id, portfolioUUID, or currencyAccountMap missing in message"); //$NON-NLS-1$
                 return;
             }
 
