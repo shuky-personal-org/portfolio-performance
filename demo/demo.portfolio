@@ -1,0 +1,155 @@
+<client>
+  <version>67</version>
+  <baseCurrency>EUR</baseCurrency>
+  <securities>
+    <security>
+      <uuid>5bfc1d9a-0d51-4769-86d2-8f5e589d3f52</uuid>
+      <name>Demo Global Equity ETF</name>
+      <currencyCode>EUR</currencyCode>
+      <isin>DEMO0000001</isin>
+      <tickerSymbol>DEMO-EQ</tickerSymbol>
+      <feed>MANUAL</feed>
+      <prices>
+        <price t="2024-01-02" v="10000000000"/>
+        <price t="2025-01-02" v="11200000000"/>
+        <price t="2026-01-02" v="12650000000"/>
+      </prices>
+      <latest t="2026-05-29" v="12975000000"/>
+      <attributes>
+        <map/>
+      </attributes>
+      <events/>
+      <isRetired>false</isRetired>
+      <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+    </security>
+    <security>
+      <uuid>bf1f2b58-c783-4af1-bd91-89de43ec08e4</uuid>
+      <name>Demo Corporate Bond ETF</name>
+      <currencyCode>EUR</currencyCode>
+      <isin>DEMO0000002</isin>
+      <tickerSymbol>DEMO-BD</tickerSymbol>
+      <feed>MANUAL</feed>
+      <prices>
+        <price t="2024-01-02" v="5000000000"/>
+        <price t="2025-01-02" v="5240000000"/>
+        <price t="2026-01-02" v="5310000000"/>
+      </prices>
+      <latest t="2026-05-29" v="5335000000"/>
+      <attributes>
+        <map/>
+      </attributes>
+      <events/>
+      <isRetired>false</isRetired>
+      <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+    </security>
+  </securities>
+  <watchlists/>
+  <accounts>
+    <account>
+      <uuid>4429c50e-c905-4f2a-9831-81630c37f6bf</uuid>
+      <name>Demo Cash Account</name>
+      <currencyCode>EUR</currencyCode>
+      <note>Synthetic cash account for local API, UI, and web demos.</note>
+      <isRetired>false</isRetired>
+      <transactions>
+        <account-transaction>
+          <uuid>bb76ffac-b31d-4649-aa2e-8f88581f09a9</uuid>
+          <date>2024-01-01T00:00</date>
+          <currencyCode>EUR</currencyCode>
+          <amount>2000000</amount>
+          <shares>0</shares>
+          <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+          <type>DEPOSIT</type>
+        </account-transaction>
+        <account-transaction>
+          <uuid>131a3db3-f421-4199-990e-ebcc5615959e</uuid>
+          <date>2024-07-15T00:00</date>
+          <currencyCode>EUR</currencyCode>
+          <amount>12500</amount>
+          <security reference="../../../../../securities/security"/>
+          <shares>100000000</shares>
+          <units>
+            <unit type="TAX">
+              <amount currency="EUR" amount="2500"/>
+            </unit>
+          </units>
+          <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+          <type>DIVIDENDS</type>
+        </account-transaction>
+        <account-transaction>
+          <uuid>98bbdd98-f535-4bd0-a2c2-bf155dfb593a</uuid>
+          <date>2025-01-15T00:00</date>
+          <currencyCode>EUR</currencyCode>
+          <amount>3500</amount>
+          <shares>0</shares>
+          <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+          <type>INTEREST</type>
+        </account-transaction>
+      </transactions>
+      <attributes>
+        <map/>
+      </attributes>
+      <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+    </account>
+  </accounts>
+  <portfolios>
+    <portfolio>
+      <uuid>55d3449c-af12-4431-973f-df5af6451d70</uuid>
+      <name>Demo Brokerage Account</name>
+      <note>Synthetic holdings with inbound/outbound deliveries for smoke tests and demos.</note>
+      <isRetired>false</isRetired>
+      <referenceAccount reference="../../../accounts/account"/>
+      <transactions>
+        <portfolio-transaction>
+          <uuid>c6d785f9-3f65-42d2-a26f-49636fd60ba9</uuid>
+          <date>2024-01-02T00:00</date>
+          <currencyCode>EUR</currencyCode>
+          <amount>1000000</amount>
+          <security reference="../../../../../securities/security"/>
+          <shares>100000000</shares>
+          <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+          <type>DELIVERY_INBOUND</type>
+        </portfolio-transaction>
+        <portfolio-transaction>
+          <uuid>509df8fb-2860-4022-bc31-09c0c1d67219</uuid>
+          <date>2024-01-02T00:00</date>
+          <currencyCode>EUR</currencyCode>
+          <amount>500000</amount>
+          <security reference="../../../../../securities/security[2]"/>
+          <shares>100000000</shares>
+          <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+          <type>DELIVERY_INBOUND</type>
+        </portfolio-transaction>
+        <portfolio-transaction>
+          <uuid>04e70fa7-a57e-4fad-ae33-2753c41ffd21</uuid>
+          <date>2025-01-02T00:00</date>
+          <currencyCode>EUR</currencyCode>
+          <amount>560000</amount>
+          <security reference="../../../../../securities/security"/>
+          <shares>50000000</shares>
+          <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+          <type>DELIVERY_INBOUND</type>
+        </portfolio-transaction>
+        <portfolio-transaction>
+          <uuid>54b9b910-78af-45fd-ade8-25a5ba4f84f9</uuid>
+          <date>2025-06-30T00:00</date>
+          <currencyCode>EUR</currencyCode>
+          <amount>262000</amount>
+          <security reference="../../../../../securities/security[2]"/>
+          <shares>50000000</shares>
+          <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+          <type>DELIVERY_OUTBOUND</type>
+        </portfolio-transaction>
+      </transactions>
+      <attributes>
+        <map/>
+      </attributes>
+      <updatedAt>2026-05-29T00:00:00Z</updatedAt>
+    </portfolio>
+  </portfolios>
+  <plans/>
+  <taxonomies/>
+  <dashboards/>
+  <properties/>
+  <settings/>
+</client>
