@@ -4,7 +4,9 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -14,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -33,8 +36,10 @@ import redis.clients.jedis.exceptions.JedisConnectionException;
  * Subscribes to {@code flex:import_ready} (published by tws-api after a Flex XML is written)
  * and imports the file into a configured portfolio via {@link FlexImportService}.
  * <p>
- * Enable with {@code FLEX_IMPORT_VIA_REDIS=true} and set {@code FLEX_IMPORT_PORTFOLIO_ID},
- * {@code FLEX_CURRENCY_ACCOUNT_MAP} (JSON object), and {@code FLEX_PORTFOLIO_UUID}.
+ * Enable with {@code FLEX_IMPORT_VIA_REDIS=true}. For one portfolio, set
+ * {@code FLEX_IMPORT_PORTFOLIO_ID}, {@code FLEX_CURRENCY_ACCOUNT_MAP} (JSON object), and
+ * {@code FLEX_PORTFOLIO_UUID}. For multiple portfolios, set {@code FLEX_IMPORT_AUTOMATIONS} to a
+ * JSON array and route entries by Flex {@code query_id}.
  * <p>
  * Imports only run if that portfolio is <strong>already in memory</strong> (opened via the REST API
  * or UI). Encrypted files must be opened with a password through those paths first; this listener
@@ -54,15 +59,15 @@ public class RedisFlexImportListener
     private Thread subscriberThread;
     private volatile Jedis activeSubscriber;
 
+    private final List<FlexImportAutomation> flexImportAutomations;
     private final boolean flexImportConfigured;
-    private final String portfolioId;
-    private final Map<String, String> currencyAccountMap;
-    private final Map<String, String> currencySecondaryAccountMap;
-    private final String portfolioUuid;
-    private final Optional<String> secondaryPortfolioUuid;
-    private final boolean convertBuySellToDelivery;
-    private final boolean removeDividends;
-    private final boolean importNotes;
+
+    private record FlexImportAutomation(String queryId, Path reportsDir, String portfolioId,
+                    Map<String, String> currencyAccountMap, Map<String, String> currencySecondaryAccountMap,
+                    String portfolioUuid, Optional<String> secondaryPortfolioUuid, boolean convertBuySellToDelivery,
+                    boolean removeDividends, boolean importNotes)
+    {
+    }
 
     public RedisFlexImportListener()
     {
@@ -77,30 +82,13 @@ public class RedisFlexImportListener
         String enabledEnv = System.getenv("FLEX_IMPORT_VIA_REDIS"); //$NON-NLS-1$
         boolean envWantsImport = Boolean.parseBoolean(enabledEnv != null ? enabledEnv : "false"); //$NON-NLS-1$
 
-        this.portfolioId = trimOrEmpty(System.getenv("FLEX_IMPORT_PORTFOLIO_ID")); //$NON-NLS-1$
-        this.portfolioUuid = trimOrEmpty(System.getenv("FLEX_PORTFOLIO_UUID")); //$NON-NLS-1$
-        String primaryJson = System.getenv("FLEX_CURRENCY_ACCOUNT_MAP"); //$NON-NLS-1$
-        String secondaryJson = System.getenv("FLEX_CURRENCY_SECONDARY_ACCOUNT_MAP"); //$NON-NLS-1$
-
-        this.currencyAccountMap = parseStringMap(primaryJson, "FLEX_CURRENCY_ACCOUNT_MAP"); //$NON-NLS-1$
-        this.currencySecondaryAccountMap = secondaryJson == null || secondaryJson.isBlank() ? Map.of()
-                        : parseStringMap(secondaryJson, "FLEX_CURRENCY_SECONDARY_ACCOUNT_MAP"); //$NON-NLS-1$
-
-        String secPf = trimOrEmpty(System.getenv("FLEX_SECONDARY_PORTFOLIO_UUID")); //$NON-NLS-1$
-        this.secondaryPortfolioUuid = secPf.isEmpty() ? Optional.empty() : Optional.of(secPf);
-
-        this.convertBuySellToDelivery = envBool("FLEX_CONVERT_BUY_SELL_TO_DELIVERY", false); //$NON-NLS-1$
-        this.removeDividends = envBool("FLEX_REMOVE_DIVIDENDS", false); //$NON-NLS-1$
-        this.importNotes = envBool("FLEX_IMPORT_NOTES", true); //$NON-NLS-1$
-
-        boolean mapsOk = !currencyAccountMap.isEmpty();
-        boolean idsOk = !portfolioId.isEmpty() && !portfolioUuid.isEmpty();
-        this.flexImportConfigured = envWantsImport && idsOk && mapsOk;
+        this.flexImportAutomations = loadImportAutomations();
+        this.flexImportConfigured = envWantsImport && !flexImportAutomations.isEmpty();
 
         if (envWantsImport && !flexImportConfigured)
         {
             logger.warn(
-                            "FLEX_IMPORT_VIA_REDIS is true but FLEX_IMPORT_PORTFOLIO_ID, FLEX_PORTFOLIO_UUID, or FLEX_CURRENCY_ACCOUNT_MAP is missing/invalid; flex Redis import disabled"); //$NON-NLS-1$
+                            "FLEX_IMPORT_VIA_REDIS is true but no valid Flex import automation is configured; flex Redis import disabled"); //$NON-NLS-1$
         }
     }
 
@@ -134,6 +122,161 @@ public class RedisFlexImportListener
             logger.error("Invalid JSON for {}: {}", envName, e.getMessage()); //$NON-NLS-1$
             return Map.of();
         }
+    }
+
+    private static Map<String, String> parseStringMap(JsonElement json, String envName)
+    {
+        if (json == null || json.isJsonNull())
+            return Map.of();
+        if (json.isJsonObject())
+        {
+            try
+            {
+                var type = new TypeToken<Map<String, String>>()
+                {
+                }.getType();
+                Map<String, String> m = new Gson().fromJson(json, type);
+                return m != null ? m : Map.of();
+            }
+            catch (JsonSyntaxException e)
+            {
+                logger.error("Invalid JSON object for {}: {}", envName, e.getMessage());
+                return Map.of();
+            }
+        }
+        if (json.isJsonPrimitive())
+            return parseStringMap(json.getAsString(), envName);
+        logger.error("Invalid JSON for {}: expected object or JSON string", envName);
+        return Map.of();
+    }
+
+    private static List<FlexImportAutomation> loadImportAutomations()
+    {
+        String automationsJson = System.getenv("FLEX_IMPORT_AUTOMATIONS");
+        if (automationsJson != null && !automationsJson.isBlank())
+            return parseImportAutomations(automationsJson);
+
+        var legacyAutomation = loadLegacyImportAutomation();
+        return legacyAutomation.map(List::of).orElseGet(List::of);
+    }
+
+    private static Optional<FlexImportAutomation> loadLegacyImportAutomation()
+    {
+        String portfolioId = trimOrEmpty(System.getenv("FLEX_IMPORT_PORTFOLIO_ID"));
+        String portfolioUuid = trimOrEmpty(System.getenv("FLEX_PORTFOLIO_UUID"));
+        Map<String, String> currencyAccountMap = parseStringMap(System.getenv("FLEX_CURRENCY_ACCOUNT_MAP"),
+                        "FLEX_CURRENCY_ACCOUNT_MAP");
+        if (portfolioId.isEmpty() || portfolioUuid.isEmpty() || currencyAccountMap.isEmpty())
+            return Optional.empty();
+
+        String secondaryJson = System.getenv("FLEX_CURRENCY_SECONDARY_ACCOUNT_MAP");
+        Map<String, String> currencySecondaryAccountMap = secondaryJson == null || secondaryJson.isBlank() ? Map.of()
+                        : parseStringMap(secondaryJson, "FLEX_CURRENCY_SECONDARY_ACCOUNT_MAP");
+
+        String secPf = trimOrEmpty(System.getenv("FLEX_SECONDARY_PORTFOLIO_UUID"));
+        Optional<String> secondaryPortfolioUuid = secPf.isEmpty() ? Optional.empty() : Optional.of(secPf);
+
+        return Optional.of(new FlexImportAutomation("", getFlexReportsDirectory(), portfolioId, currencyAccountMap,
+                        currencySecondaryAccountMap, portfolioUuid, secondaryPortfolioUuid,
+                        envBool("FLEX_CONVERT_BUY_SELL_TO_DELIVERY", false), envBool("FLEX_REMOVE_DIVIDENDS", false),
+                        envBool("FLEX_IMPORT_NOTES", true)));
+    }
+
+    private static List<FlexImportAutomation> parseImportAutomations(String automationsJson)
+    {
+        try
+        {
+            JsonElement parsed = JsonParser.parseString(automationsJson);
+            if (!parsed.isJsonArray())
+            {
+                logger.error("FLEX_IMPORT_AUTOMATIONS must be a JSON array");
+                return List.of();
+            }
+
+            List<FlexImportAutomation> automations = new ArrayList<>();
+            Map<String, Boolean> queryIds = new HashMap<>();
+            JsonArray array = parsed.getAsJsonArray();
+            for (int ii = 0; ii < array.size(); ii++)
+            {
+                JsonElement element = array.get(ii);
+                if (!element.isJsonObject())
+                {
+                    logger.warn("Skipping FLEX_IMPORT_AUTOMATIONS[{}]: expected object", ii);
+                    continue;
+                }
+
+                JsonObject object = element.getAsJsonObject();
+                Optional<FlexImportAutomation> automation = parseImportAutomation(object, ii);
+                if (automation.isEmpty())
+                    continue;
+
+                String queryId = automation.get().queryId();
+                if (queryIds.containsKey(queryId))
+                {
+                    logger.warn("Skipping duplicate FLEX_IMPORT_AUTOMATIONS query_id: {}", queryId);
+                    continue;
+                }
+
+                queryIds.put(queryId, Boolean.TRUE);
+                automations.add(automation.get());
+            }
+
+            return List.copyOf(automations);
+        }
+        catch (JsonSyntaxException e)
+        {
+            logger.error("Invalid JSON for FLEX_IMPORT_AUTOMATIONS: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static Optional<FlexImportAutomation> parseImportAutomation(JsonObject object, int index)
+    {
+        String queryId = readString(object, "query_id", "queryId").orElse("");
+        String portfolioId = readString(object, "portfolio_id", "portfolioId").orElse("");
+        String portfolioUuid = readString(object, "portfolio_uuid", "portfolioUuid").orElse("");
+        Map<String, String> currencyAccountMap = parseStringMap(
+                        firstProperty(object, "currency_account_map", "currencyAccountMap").orElse(null),
+                        "FLEX_IMPORT_AUTOMATIONS[" + index + "].currency_account_map");
+
+        if (queryId.isEmpty() || portfolioId.isEmpty() || portfolioUuid.isEmpty() || currencyAccountMap.isEmpty())
+        {
+            logger.warn(
+                            "Skipping FLEX_IMPORT_AUTOMATIONS[{}]: query_id, portfolio_id, portfolio_uuid, and currency_account_map are required",
+                            index);
+            return Optional.empty();
+        }
+
+        Map<String, String> currencySecondaryAccountMap = parseStringMap(
+                        firstProperty(object, "currency_secondary_account_map", "currencySecondaryAccountMap")
+                                        .orElse(null),
+                        "FLEX_IMPORT_AUTOMATIONS[" + index + "].currency_secondary_account_map");
+        String secondaryPortfolioUuid = readString(object, "secondary_portfolio_uuid", "secondaryPortfolioUuid")
+                        .orElse("");
+        String reportsDir = readString(object, "reports_dir", "reportsDir").orElse("");
+
+        return Optional.of(new FlexImportAutomation(queryId,
+                        reportsDir.isEmpty() ? getFlexReportsDirectory() : Paths.get(reportsDir).toAbsolutePath(),
+                        portfolioId, currencyAccountMap, currencySecondaryAccountMap, portfolioUuid,
+                        secondaryPortfolioUuid.isEmpty() ? Optional.empty() : Optional.of(secondaryPortfolioUuid),
+                        readBoolean(object, "convert_buy_sell_to_delivery", "convertBuySellToDelivery", false),
+                        readBoolean(object, "remove_dividends", "removeDividends", false),
+                        readBoolean(object, "import_notes", "importNotes", true)));
+    }
+
+    private Optional<FlexImportAutomation> findAutomation(String queryId)
+    {
+        if (flexImportAutomations.size() == 1 && flexImportAutomations.get(0).queryId().isEmpty())
+            return Optional.of(flexImportAutomations.get(0));
+
+        if (queryId == null || queryId.isBlank())
+        {
+            if (flexImportAutomations.size() == 1)
+                return Optional.of(flexImportAutomations.get(0));
+            return Optional.empty();
+        }
+
+        return flexImportAutomations.stream().filter(a -> queryId.equals(a.queryId())).findFirst();
     }
 
     /**
@@ -310,6 +453,15 @@ public class RedisFlexImportListener
                 return;
             }
 
+            String queryId = readString(payload, "query_id").orElse(""); //$NON-NLS-1$
+            Optional<FlexImportAutomation> automation = findAutomation(queryId);
+            if (automation.isEmpty())
+            {
+                logger.warn("Skipping Redis flex import: no configured import automation for query_id '{}'", queryId); //$NON-NLS-1$
+                return;
+            }
+            FlexImportAutomation config = automation.get();
+
             String rawPath = readString(payload, "file_path").orElse(""); //$NON-NLS-1$
             if (rawPath.isEmpty())
             {
@@ -320,18 +472,18 @@ public class RedisFlexImportListener
             Path path = Paths.get(rawPath);
             String relativeFileName = path.getFileName() != null ? path.getFileName().toString() : rawPath;
 
-            logger.info("Redis flex import: file {}", relativeFileName); //$NON-NLS-1$
+            logger.info("Redis flex import: query {}, file {}", queryId, relativeFileName); //$NON-NLS-1$
 
-            Client client = portfolioFileService.getPortfolio(portfolioId);
+            Client client = portfolioFileService.getPortfolio(config.portfolioId());
             if (client == null)
             {
                 logger.warn(
                                 "Skipping Redis flex import: portfolio {} is not in cache — open it first (e.g. GET /api/v1/portfolios/{})", //$NON-NLS-1$
-                                portfolioId);
+                                config.portfolioId());
                 return;
             }
 
-            Path flexReportsDir = getFlexReportsDirectory();
+            Path flexReportsDir = config.reportsDir();
             Path resolvedPath = flexReportsDir.resolve(relativeFileName).normalize();
             if (!resolvedPath.startsWith(flexReportsDir))
             {
@@ -347,24 +499,24 @@ public class RedisFlexImportListener
             File file = resolvedPath.toFile();
 
             FlexImportService service = new FlexImportService();
-            Map<String, String> secondary = currencySecondaryAccountMap.isEmpty() ? new HashMap<>()
-                            : new HashMap<>(currencySecondaryAccountMap);
+            Map<String, String> secondary = config.currencySecondaryAccountMap().isEmpty() ? new HashMap<>()
+                            : new HashMap<>(config.currencySecondaryAccountMap());
 
-            FlexImportService.ImportResult result = service.importFlexReport(client, file, currencyAccountMap, secondary,
-                            portfolioUuid, secondaryPortfolioUuid.orElse(null), convertBuySellToDelivery,
-                            removeDividends, importNotes);
+            FlexImportService.ImportResult result = service.importFlexReport(client, file, config.currencyAccountMap(),
+                            secondary, config.portfolioUuid(), config.secondaryPortfolioUuid().orElse(null),
+                            config.convertBuySellToDelivery(), config.removeDividends(), config.importNotes());
 
             if (result.getItemsImported() > 0)
             {
                 try
                 {
-                    portfolioFileService.saveFile(portfolioId);
-                    logger.info("Portfolio saved after Redis flex import — portfolio: {}, items: {}", portfolioId, //$NON-NLS-1$
-                                    result.getItemsImported());
+                    portfolioFileService.saveFile(config.portfolioId());
+                    logger.info("Portfolio saved after Redis flex import — portfolio: {}, items: {}", //$NON-NLS-1$
+                                    config.portfolioId(), result.getItemsImported());
                 }
                 catch (Exception e)
                 {
-                    logger.error("Failed to save portfolio after flex import: {}", portfolioId, e); //$NON-NLS-1$
+                    logger.error("Failed to save portfolio after flex import: {}", config.portfolioId(), e); //$NON-NLS-1$
                 }
             }
 
@@ -389,14 +541,41 @@ public class RedisFlexImportListener
         }
     }
 
-    private Optional<String> readString(JsonObject object, String property)
+    private static Optional<JsonElement> firstProperty(JsonObject object, String... properties)
     {
-        JsonElement element = object.get(property);
-        if (element == null || element.isJsonNull())
+        for (String property : properties)
+        {
+            JsonElement element = object.get(property);
+            if (element != null && !element.isJsonNull())
+                return Optional.of(element);
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> readString(JsonObject object, String... properties)
+    {
+        Optional<JsonElement> element = firstProperty(object, properties);
+        if (element.isEmpty())
             return Optional.empty();
 
-        String value = element.getAsString();
+        String value = element.get().getAsString();
         return (value == null || value.isBlank()) ? Optional.empty() : Optional.of(value.trim());
+    }
+
+    private static boolean readBoolean(JsonObject object, String snakeCaseProperty, String camelCaseProperty,
+                    boolean defaultValue)
+    {
+        Optional<JsonElement> element = firstProperty(object, snakeCaseProperty, camelCaseProperty);
+        if (element.isEmpty())
+            return defaultValue;
+        try
+        {
+            return element.get().getAsBoolean();
+        }
+        catch (UnsupportedOperationException | IllegalStateException e)
+        {
+            return defaultValue;
+        }
     }
 
     private void sleep(long millis)
