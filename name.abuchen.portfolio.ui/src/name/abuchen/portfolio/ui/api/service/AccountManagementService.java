@@ -54,18 +54,19 @@ public final class AccountManagementService
         requireRequest(request);
 
         var account = findAccount(client, accountUuid);
+        var name = request.getName() != null ? requireName(request.getName()) : null;
+        var currencyCode = request.getCurrencyCode() != null
+                        ? resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode())
+                        : null;
 
-        if (request.getName() != null)
-            account.setName(requireName(request.getName()));
+        if (currencyCode != null && !account.getCurrencyCode().equals(currencyCode) && !account.getTransactions().isEmpty())
+            throw new IllegalArgumentException("Currency can only be changed before transactions are added");
 
-        if (request.getCurrencyCode() != null)
-        {
-            var currencyCode = resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
-            if (!account.getCurrencyCode().equals(currencyCode) && !account.getTransactions().isEmpty())
-                throw new IllegalArgumentException("Currency can only be changed before transactions are added");
+        if (name != null)
+            account.setName(name);
 
+        if (currencyCode != null)
             account.setCurrencyCode(currencyCode);
-        }
 
         if (request.getNote() != null)
             account.setNote(normalizeNote(request.getNote()));

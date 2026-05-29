@@ -77,6 +77,34 @@ public class AccountManagementServiceTest
     }
 
     @Test
+    public void rejectedCurrencyChangeDoesNotPartiallyRenameAccount()
+    {
+        var client = new Client();
+        var account = new Account("Cash");
+        account.setCurrencyCode(CurrencyUnit.EUR);
+        account.addTransaction(new AccountTransaction(LocalDateTime.of(2026, 5, 29, 12, 0), CurrencyUnit.EUR,
+                        1_000, null, AccountTransaction.Type.DEPOSIT));
+        client.addAccount(account);
+
+        var request = new AccountMutationDto();
+        request.setName("Partially Applied");
+        request.setCurrencyCode(CurrencyUnit.USD);
+
+        try
+        {
+            AccountManagementService.updateAccount(client, account.getUUID(), request);
+        }
+        catch (IllegalArgumentException e)
+        {
+            assertThat(account.getName(), is("Cash"));
+            assertThat(account.getCurrencyCode(), is(CurrencyUnit.EUR));
+            return;
+        }
+
+        throw new AssertionError("Currency change should have been rejected");
+    }
+
+    @Test
     public void deletesEmptyAccount()
     {
         var client = new Client();
