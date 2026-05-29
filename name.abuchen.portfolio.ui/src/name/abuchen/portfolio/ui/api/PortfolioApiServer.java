@@ -44,8 +44,11 @@ public class PortfolioApiServer
         PortfolioLog.info("📋 Available endpoints:");
         PortfolioLog.info("  GET /api/hello - Hello world endpoint");
         PortfolioLog.info("  GET /api/v1/portfolios - List all portfolios");
+        PortfolioLog.info("  POST /api/v1/portfolios - Create a portfolio file");
         PortfolioLog.info("  GET /api/v1/portfolios/health - Health check");
         PortfolioLog.info("  GET /api/v1/portfolios/{portfolioId} - Get portfolio by ID");
+        PortfolioLog.info("  POST /api/v1/portfolios/{portfolioId}/duplicate - Duplicate a portfolio file");
+        PortfolioLog.info("  DELETE /api/v1/portfolios/{portfolioId} - Move a portfolio file to deleted");
         PortfolioLog.info("  GET /api/v1/portfolios/{portfolioId}/widgetData - Get widget data");
         PortfolioLog.info("  GET /api/v1/portfolios/{portfolioId}/securities/{securityUuid}/prices - Get security prices");
         PortfolioLog.info("  POST /api/v1/portfolios/{portfolioId}/securities/{securityUuid}/prices - Add security price");

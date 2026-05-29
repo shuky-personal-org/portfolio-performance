@@ -3,15 +3,18 @@ package name.abuchen.portfolio.ui.api.service;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -24,17 +27,19 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import name.abuchen.portfolio.ui.api.dto.CurrencyConversionDto;
-import name.abuchen.portfolio.ui.api.dto.PortfolioFileInfo;
-import name.abuchen.portfolio.ui.api.dto.ReportingPeriodDto;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.ClientFactory;
+import name.abuchen.portfolio.model.ClientFileType;
+import name.abuchen.portfolio.model.ConfigurationSet.WellKnownConfigurationSets;
+import name.abuchen.portfolio.model.SaveFlag;
 import name.abuchen.portfolio.money.CurrencyConverter;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
 import name.abuchen.portfolio.money.ExchangeRate;
 import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.snapshot.ReportingPeriod;
-import name.abuchen.portfolio.model.ConfigurationSet.WellKnownConfigurationSets;
+import name.abuchen.portfolio.ui.api.dto.CurrencyConversionDto;
+import name.abuchen.portfolio.ui.api.dto.PortfolioFileInfo;
+import name.abuchen.portfolio.ui.api.dto.ReportingPeriodDto;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 
@@ -47,6 +52,9 @@ import org.eclipse.core.runtime.IProgressMonitor;
 public class PortfolioFileService {
     
     private static final Logger logger = LoggerFactory.getLogger(PortfolioFileService.class);
+    private static final String DEFAULT_PORTFOLIO_EXTENSION = ".portfolio";
+    private static final String XML_EXTENSION = ".xml";
+    private static final String DELETED_DIRECTORY_NAME = "deleted";
     
     // Singleton instance
     private static PortfolioFileService instance;
@@ -59,7 +67,7 @@ public class PortfolioFileService {
     
     /**
      * Get the singleton instance of PortfolioFileService.
-     * 
+     *
      * @return The singleton instance
      */
     public static synchronized PortfolioFileService getInstance() {
@@ -82,7 +90,7 @@ public class PortfolioFileService {
      * @param portfolioDir Portfolio directory path
      */
     public PortfolioFileService(String portfolioDir) {
-        this.portfolioDirectory = Paths.get(portfolioDir).toAbsolutePath();
+        this.portfolioDirectory = Paths.get(portfolioDir).toAbsolutePath().normalize();
         logger.info("Portfolio directory set to: {}", this.portfolioDirectory);
         
         // Ensure directory exists
@@ -146,15 +154,7 @@ public class PortfolioFileService {
      * @throws IOException if validation fails
      */
     private File validateAndResolveFilePath(String relativePath) throws IOException {
-        if (relativePath == null || relativePath.trim().isEmpty()) {
-            throw new IllegalArgumentException("File path cannot be null or empty");
-        }
-        
-        Path path = portfolioDirectory.resolve(relativePath).normalize();
-        
-        if (!path.startsWith(portfolioDirectory)) {
-            throw new SecurityException("Access denied: path outside portfolio directory");
-        }
+        Path path = resolveRelativePath(relativePath);
         
         if (!Files.exists(path)) {
             throw new FileNotFoundException("Portfolio file not found: " + relativePath + " (resolved to: " + path + ")");
@@ -216,6 +216,7 @@ public class PortfolioFileService {
         PortfolioFileInfo fileInfo = new PortfolioFileInfo();
         fileInfo.setId(fileId);
         fileInfo.setName(extractName(relativePath));
+        fileInfo.setPath(relativePath);
         fileInfo.setLastModified(LocalDateTime.ofInstant(
             java.time.Instant.ofEpochMilli(file.lastModified()),
             ZoneId.systemDefault()
@@ -461,30 +462,14 @@ public class PortfolioFileService {
     public PortfolioFileInfo getFileInfo(String relativePath) throws IOException {
         logger.info("Getting file info for: {} (relative to: {})", relativePath, portfolioDirectory);
         
-        // Resolve the relative path against the portfolio directory
-        Path path = portfolioDirectory.resolve(relativePath).normalize();
-        
-        // Security check: ensure the resolved path is within the portfolio directory
-        if (!path.startsWith(portfolioDirectory)) {
-            throw new SecurityException("Access denied: path outside portfolio directory");
-        }
+        Path path = resolveRelativePath(relativePath);
         
         if (!Files.exists(path)) {
             throw new FileNotFoundException("Portfolio file not found: " + relativePath + " (resolved to: " + path + ")");
         }
         
         File file = path.toFile();
-        
-        PortfolioFileInfo fileInfo = new PortfolioFileInfo();
-        fileInfo.setId(generateFileId(relativePath));
-        fileInfo.setName(extractName(relativePath));
-        fileInfo.setLastModified(LocalDateTime.ofInstant(
-            java.time.Instant.ofEpochMilli(file.lastModified()),
-            ZoneId.systemDefault()
-        ));
-        fileInfo.setEncrypted(ClientFactory.isEncrypted(file));
-        
-        return fileInfo;
+        return createBasicFileInfo(file, relativePath, generateFileId(relativePath));
     }
     
     /**
@@ -505,23 +490,16 @@ public class PortfolioFileService {
         
         try (Stream<Path> paths = Files.walk(portfolioDirectory)) {
             paths.filter(Files::isRegularFile)
+                 .filter(path -> !isInDeletedDirectory(path))
                  .filter(this::isPortfolioFile)
                  .forEach(path -> {
                      try {
-                         PortfolioFileInfo fileInfo = new PortfolioFileInfo();
                          File file = path.toFile();
                          
                          // Calculate relative path
                          String relativePath = portfolioDirectory.relativize(path).toString();
                          
-                         // Set file ID and name
-                         fileInfo.setId(generateFileId(relativePath));
-                         fileInfo.setName(extractName(relativePath));
-                         fileInfo.setLastModified(LocalDateTime.ofInstant(
-                             java.time.Instant.ofEpochMilli(file.lastModified()),
-                             ZoneId.systemDefault()
-                         ));
-                         fileInfo.setEncrypted(ClientFactory.isEncrypted(file));
+                         PortfolioFileInfo fileInfo = createBasicFileInfo(file, relativePath, generateFileId(relativePath));
                          
                          files.add(fileInfo);
                          
@@ -533,6 +511,255 @@ public class PortfolioFileService {
         
         logger.info("Found {} portfolio files", files.size());
         return files;
+    }
+
+    /**
+     * Create a new empty portfolio file.
+     * 
+     * @param requestedPath The requested relative path or name
+     * @return PortfolioFileInfo for the created file
+     * @throws IOException if the portfolio file cannot be created
+     */
+    public PortfolioFileInfo createPortfolioFile(String requestedPath) throws IOException {
+        String targetRelativePath = normalizeRequestedPortfolioPath(requestedPath, DEFAULT_PORTFOLIO_EXTENSION);
+        Path targetPath = resolveNewPortfolioPath(targetRelativePath);
+
+        logger.info("Creating portfolio file: {}", targetPath);
+
+        Files.createDirectories(targetPath.getParent());
+
+        var client = new Client();
+        var flags = getSaveFlagsForNewFile(targetPath);
+        ClientFactory.saveAs(client, targetPath.toFile(), null, flags);
+
+        String relativePath = portfolioDirectory.relativize(targetPath).toString();
+        String fileId = generateFileId(relativePath);
+        clientCache.put(fileId, client);
+
+        var fileInfo = createBasicFileInfo(targetPath.toFile(), relativePath, fileId);
+        populateClientData(fileInfo, client, targetPath.toFile());
+
+        return fileInfo;
+    }
+
+    /**
+     * Duplicate an existing portfolio file.
+     * 
+     * @param fileId The ID of the portfolio file to duplicate
+     * @param requestedPath Optional requested relative path or name for the duplicate
+     * @return PortfolioFileInfo for the duplicated file
+     * @throws IOException if the portfolio file cannot be duplicated
+     */
+    public PortfolioFileInfo duplicatePortfolioFile(String fileId, String requestedPath) throws IOException {
+        String sourceRelativePath = findFileById(fileId);
+        Path sourcePath = resolveRelativePath(sourceRelativePath);
+
+        String targetRelativePath = requestedPath == null || requestedPath.trim().isEmpty()
+                        ? createDefaultDuplicateRelativePath(sourcePath)
+                        : normalizeRequestedPortfolioPath(requestedPath, getFileExtension(sourcePath));
+        Path targetPath = resolveNewPortfolioPath(targetRelativePath);
+
+        logger.info("Duplicating portfolio file {} to {}", sourcePath, targetPath);
+
+        Files.createDirectories(targetPath.getParent());
+        Files.copy(sourcePath, targetPath, StandardCopyOption.COPY_ATTRIBUTES);
+
+        String relativePath = portfolioDirectory.relativize(targetPath).toString();
+        return createBasicFileInfo(targetPath.toFile(), relativePath, generateFileId(relativePath));
+    }
+
+    /**
+     * Rename an existing portfolio file.
+     *
+     * @param fileId The ID of the portfolio file to rename
+     * @param requestedPath The requested relative path or name for the renamed file
+     * @return PortfolioFileInfo for the renamed file
+     * @throws IOException if the portfolio file cannot be renamed
+     */
+    public PortfolioFileInfo renamePortfolioFile(String fileId, String requestedPath) throws IOException {
+        String sourceRelativePath = findFileById(fileId);
+        Path sourcePath = resolveRelativePath(sourceRelativePath);
+        String targetRelativePath = normalizeRequestedPortfolioPath(requestedPath, getFileExtension(sourcePath));
+        Path targetPath = resolveNewPortfolioPath(targetRelativePath);
+
+        logger.info("Renaming portfolio file {} to {}", sourcePath, targetPath);
+
+        Files.createDirectories(targetPath.getParent());
+        Files.move(sourcePath, targetPath);
+
+        String relativePath = portfolioDirectory.relativize(targetPath).toString();
+        String renamedFileId = generateFileId(relativePath);
+        Client cachedClient = clientCache.remove(fileId);
+        if (cachedClient != null) {
+            clientCache.put(renamedFileId, cachedClient);
+        }
+
+        return createBasicFileInfo(targetPath.toFile(), relativePath, renamedFileId);
+    }
+
+    /**
+     * Move a portfolio file into the deleted folder.
+     * 
+     * @param fileId The ID of the portfolio file to remove
+     * @return PortfolioFileInfo for the moved file inside the deleted folder
+     * @throws IOException if the portfolio file cannot be moved
+     */
+    public PortfolioFileInfo removePortfolioFile(String fileId) throws IOException {
+        String sourceRelativePath = findFileById(fileId);
+        Path sourcePath = resolveRelativePath(sourceRelativePath);
+        Path deletedPath = createUniqueDeletedPath(sourcePath);
+
+        logger.info("Moving portfolio file {} to deleted folder: {}", sourcePath, deletedPath);
+
+        Files.createDirectories(deletedPath.getParent());
+        Files.move(sourcePath, deletedPath);
+        clientCache.remove(fileId);
+
+        String deletedRelativePath = portfolioDirectory.relativize(deletedPath).toString();
+        return createBasicFileInfo(deletedPath.toFile(), deletedRelativePath, generateFileId(deletedRelativePath));
+    }
+
+    /**
+     * Resolve an active portfolio file by ID for raw file operations.
+     * 
+     * @param fileId The ID of the portfolio file
+     * @return The resolved portfolio file path
+     * @throws IOException if the file cannot be resolved
+     */
+    public Path getPortfolioFilePath(String fileId) throws IOException {
+        String relativePath = findFileById(fileId);
+        Path path = resolveRelativePath(relativePath);
+        if (!Files.isRegularFile(path)) {
+            throw new FileNotFoundException("Portfolio file not found: " + relativePath);
+        }
+
+        return path;
+    }
+
+    private Path resolveRelativePath(String relativePath) {
+        if (relativePath == null || relativePath.trim().isEmpty()) {
+            throw new IllegalArgumentException("File path cannot be null or empty");
+        }
+
+        Path requestedPath = Paths.get(relativePath.trim().replace('\\', '/'));
+        if (requestedPath.isAbsolute()) {
+            throw new SecurityException("Access denied: absolute paths are not allowed");
+        }
+
+        Path path = portfolioDirectory.resolve(requestedPath).normalize();
+        if (!path.startsWith(portfolioDirectory)) {
+            throw new SecurityException("Access denied: path outside portfolio directory");
+        }
+
+        if (isInDeletedDirectory(path)) {
+            throw new SecurityException("Access denied: deleted portfolio files are not active");
+        }
+
+        return path;
+    }
+
+    private Path resolveNewPortfolioPath(String relativePath) throws IOException {
+        Path path = resolveRelativePath(relativePath);
+        if (Files.exists(path)) {
+            throw new FileAlreadyExistsException("Portfolio file already exists: " + relativePath);
+        }
+
+        if (!isPortfolioFile(path)) {
+            throw new IllegalArgumentException("Portfolio file must end with .portfolio or .xml");
+        }
+
+        return path;
+    }
+
+    private String normalizeRequestedPortfolioPath(String requestedPath, String defaultExtension) {
+        if (requestedPath == null || requestedPath.trim().isEmpty()) {
+            throw new IllegalArgumentException("Portfolio file name or path cannot be null or empty");
+        }
+
+        Path path = Paths.get(requestedPath.trim().replace('\\', '/'));
+        Path fileName = path.getFileName();
+        if (fileName == null || fileName.toString().trim().isEmpty()) {
+            throw new IllegalArgumentException("Portfolio file name cannot be empty");
+        }
+
+        if (isPortfolioFile(path)) {
+            return path.toString();
+        }
+
+        Path parent = path.getParent();
+        Path fileNameWithExtension = Paths.get(fileName + defaultExtension);
+        return parent == null ? fileNameWithExtension.toString() : parent.resolve(fileNameWithExtension).toString();
+    }
+
+    private boolean isInDeletedDirectory(Path path) {
+        return path.toAbsolutePath().normalize().startsWith(getDeletedDirectory());
+    }
+
+    private Path getDeletedDirectory() {
+        return portfolioDirectory.resolve(DELETED_DIRECTORY_NAME).normalize();
+    }
+
+    private String createDefaultDuplicateRelativePath(Path sourcePath) {
+        Path sourceParent = sourcePath.getParent();
+        Path targetPath = createUniquePath(sourceParent.resolve(buildCopyFileName(sourcePath.getFileName().toString(), 0)));
+
+        return portfolioDirectory.relativize(targetPath).toString();
+    }
+
+    private String buildCopyFileName(String fileName, int index) {
+        String extension = getFileExtension(fileName);
+        String baseName = fileName.substring(0, fileName.length() - extension.length());
+        String copySuffix = index == 0 ? " copy" : " copy " + (index + 1);
+
+        return baseName + copySuffix + extension;
+    }
+
+    private Path createUniqueDeletedPath(Path sourcePath) {
+        Path relativePath = portfolioDirectory.relativize(sourcePath);
+        return createUniquePath(getDeletedDirectory().resolve(relativePath));
+    }
+
+    private Path createUniquePath(Path requestedPath) {
+        if (!Files.exists(requestedPath)) {
+            return requestedPath;
+        }
+
+        Path parent = requestedPath.getParent();
+        String fileName = requestedPath.getFileName().toString();
+        String extension = getFileExtension(fileName);
+        String baseName = fileName.substring(0, fileName.length() - extension.length());
+
+        int index = 1;
+        while (true) {
+            Path candidate = parent.resolve(baseName + " " + index + extension);
+            if (!Files.exists(candidate)) {
+                return candidate;
+            }
+            index++;
+        }
+    }
+
+    private String getFileExtension(Path path) {
+        return getFileExtension(path.getFileName().toString());
+    }
+
+    private String getFileExtension(String fileName) {
+        String lowerCaseFileName = fileName.toLowerCase();
+        if (lowerCaseFileName.endsWith(XML_EXTENSION)) {
+            return XML_EXTENSION;
+        }
+        if (lowerCaseFileName.endsWith(DEFAULT_PORTFOLIO_EXTENSION)) {
+            return DEFAULT_PORTFOLIO_EXTENSION;
+        }
+        return DEFAULT_PORTFOLIO_EXTENSION;
+    }
+
+    private Set<SaveFlag> getSaveFlagsForNewFile(Path path) {
+        if (path.getFileName().toString().toLowerCase().endsWith(XML_EXTENSION)) {
+            return EnumSet.copyOf(ClientFileType.XML.getFlags());
+        }
+
+        return EnumSet.copyOf(ClientFileType.BINARY.getFlags());
     }
     
     /**
@@ -616,6 +843,7 @@ public class PortfolioFileService {
         
         try (Stream<Path> paths = Files.walk(portfolioDirectory)) {
             return paths.filter(Files::isRegularFile)
+                       .filter(path -> !isInDeletedDirectory(path))
                        .filter(this::isPortfolioFile)
                        .map(path -> portfolioDirectory.relativize(path).toString())
                        .filter(relativePath -> {
