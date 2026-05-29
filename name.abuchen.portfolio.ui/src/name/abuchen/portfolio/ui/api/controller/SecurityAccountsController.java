@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 import javax.ws.rs.Consumes;
@@ -30,6 +31,9 @@ import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.PortfolioSnapshot;
 import name.abuchen.portfolio.ui.api.dto.ValueDataPointDto;
+import name.abuchen.portfolio.ui.api.dto.SecurityAccountMutationDto;
+import name.abuchen.portfolio.ui.api.service.SecurityAccountManagementService;
+import name.abuchen.portfolio.ui.api.service.SecurityAccountManagementService.SecurityAccountDeletionException;
 
 /**
  * REST Controller for security account (portfolio) operations.
@@ -268,11 +272,52 @@ public class SecurityAccountsController extends BaseController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response createSecurityAccount(@PathParam("portfolioId") String portfolioId,
-                                         Map<String, Object> portfolioData) {
-        // TODO: Implement security account creation
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Security account creation not yet implemented");
+                                         SecurityAccountMutationDto portfolioData) {
+        try {
+            logger.info("Creating security account for portfolio {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before creating security accounts");
+            }
+
+            Portfolio portfolio = SecurityAccountManagementService.createSecurityAccount(client, portfolioData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("securityAccount", convertPortfolioToDtoWithValue(portfolio, client));
+            response.put("message", "Security account created successfully");
+
+            logger.info("Created security account {} ({}) for portfolio {}",
+                portfolio.getName(), portfolio.getUUID(), portfolioId);
+
+            return Response.status(Response.Status.CREATED).entity(response).build();
+
+        } catch (NoSuchElementException e) {
+            logger.warn("Reference account not found for security account creation in portfolio {}: {}",
+                portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Reference account not found",
+                e.getMessage());
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid security account creation request for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error creating security account for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -290,11 +335,54 @@ public class SecurityAccountsController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response updateSecurityAccount(@PathParam("portfolioId") String portfolioId,
                                          @PathParam("securityAccountUuid") String securityAccountUuid,
-                                         Map<String, Object> portfolioData) {
-        // TODO: Implement security account update
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Security account update not yet implemented");
+                                         SecurityAccountMutationDto portfolioData) {
+        try {
+            logger.info("Updating security account {} for portfolio {}", securityAccountUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before updating security accounts");
+            }
+
+            Portfolio portfolio = SecurityAccountManagementService.updateSecurityAccount(client, securityAccountUuid,
+                portfolioData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("securityAccount", convertPortfolioToDtoWithValue(portfolio, client));
+            response.put("message", "Security account updated successfully");
+
+            logger.info("Updated security account {} ({}) for portfolio {}",
+                portfolio.getName(), securityAccountUuid, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (NoSuchElementException e) {
+            logger.warn("Security account or reference account not found while updating {} in portfolio {}: {}",
+                securityAccountUuid, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Security account or reference account not found",
+                e.getMessage());
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid security account update request for account {} in portfolio {}: {}",
+                securityAccountUuid, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error updating security account {} for portfolio {}: {}",
+                securityAccountUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -310,10 +398,52 @@ public class SecurityAccountsController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteSecurityAccount(@PathParam("portfolioId") String portfolioId,
                                          @PathParam("securityAccountUuid") String securityAccountUuid) {
-        // TODO: Implement security account deletion
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Security account deletion not yet implemented");
+        try {
+            logger.info("Deleting security account {} for portfolio {}", securityAccountUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before deleting security accounts");
+            }
+
+            Portfolio portfolio = SecurityAccountManagementService.deleteSecurityAccount(client, securityAccountUuid);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("securityAccountUuid", securityAccountUuid);
+            response.put("securityAccountName", portfolio.getName());
+            response.put("message", "Security account deleted successfully");
+
+            logger.info("Deleted security account {} ({}) for portfolio {}",
+                portfolio.getName(), securityAccountUuid, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (NoSuchElementException e) {
+            logger.warn("Security account not found: {} in portfolio: {}", securityAccountUuid, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Security account not found",
+                e.getMessage());
+        } catch (SecurityAccountDeletionException e) {
+            logger.warn("Cannot delete security account {} in portfolio {}: {} transaction(s)",
+                securityAccountUuid, portfolioId, e.getTransactionsCount());
+            return createErrorResponse(Response.Status.CONFLICT,
+                "Security account has transactions",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error deleting security account {} for portfolio {}: {}",
+                securityAccountUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
