@@ -3,7 +3,6 @@ package name.abuchen.portfolio.ui.api.controller;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -212,7 +211,7 @@ public class PortfolioController extends BaseController {
         try {
             logger.info("Downloading portfolio file: {}", portfolioId);
 
-            Path filePath = portfolioFileService.getPortfolioFilePath(portfolioId);
+            java.nio.file.Path filePath = portfolioFileService.getPortfolioFilePath(portfolioId);
             String filename = sanitizeAttachmentFilename(filePath.getFileName().toString());
 
             return Response.ok(filePath.toFile(), MediaType.APPLICATION_OCTET_STREAM)
