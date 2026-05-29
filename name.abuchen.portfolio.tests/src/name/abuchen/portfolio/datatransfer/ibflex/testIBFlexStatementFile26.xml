@@ -1,0 +1,9 @@
+<FlexQueryResponse queryName="PP" type="AF">
+  <FlexStatements count="1">
+    <FlexStatement accountId="U19253415" fromDate="20260527" toDate="20260527" period="LastBusinessDay" whenGenerated="20260528;182515">
+      <Transfers>
+        <Transfer accountId="U19253415" acctAlias="Main" model="" currency="USD" fxRateToBase="1" assetCategory="STK" subCategory="ETF" symbol="AGGG" description="ISHARES CORE GLB AGG BOND" conid="297484323" securityID="IE00B3F81409" securityIDType="ISIN" cusip="" isin="IE00B3F81409" figi="BBG00J5HFCH4" listingExchange="LSEETF" underlyingConid="" underlyingSymbol="" underlyingSecurityID="" underlyingListingExchange="" issuer="" issuerCountryCode="IE" multiplier="1" strike="" expiry="" putCall="" principalAdjustFactor="" reportDate="20260527" date="20260526" dateTime="20260526;234057" settleDate="20260528" type="INTERNAL" direction="OUT" company="--" account="U25885452" accountName="" deliveringBroker="" quantity="-2" transferPrice="0" positionAmount="-8.786" positionAmountInBase="-8.786" pnlAmount="0" pnlAmountInBase="0" cashTransfer="0" code="" clientReference="" transactionID="6007296420" levelOfDetail="TRANSFER" positionInstructionID="" positionInstructionSetID="" serialNumber="" deliveryType="" commodityType="" fineness="0.0" weight="0.0" />
+      </Transfers>
+    </FlexStatement>
+  </FlexStatements>
+</FlexQueryResponse>
