@@ -33,8 +33,8 @@ import redis.clients.jedis.exceptions.JedisConnectionException;
  * Subscribes to {@code flex:import_ready} (published by tws-api after a Flex XML is written)
  * and imports the file into a configured portfolio via {@link FlexImportService}.
  * <p>
- * Enable with {@code FLEX_IMPORT_VIA_REDIS=true} and set {@code FLEX_IMPORT_PORTFOLIO_ID},
- * {@code FLEX_CURRENCY_ACCOUNT_MAP} (JSON object), and {@code FLEX_PORTFOLIO_UUID}.
+ * Enable with {@code FLEX_IMPORT_VIA_REDIS=true}. Import messages can carry {@code portfolio_id}
+ * and {@code import_config}; legacy environment variables are used as a fallback.
  * <p>
  * Imports only run if that portfolio is <strong>already in memory</strong> (opened via the REST API
  * or UI). Encrypted files must be opened with a password through those paths first; this listener
@@ -93,15 +93,7 @@ public class RedisFlexImportListener
         this.removeDividends = envBool("FLEX_REMOVE_DIVIDENDS", false); //$NON-NLS-1$
         this.importNotes = envBool("FLEX_IMPORT_NOTES", true); //$NON-NLS-1$
 
-        boolean mapsOk = !currencyAccountMap.isEmpty();
-        boolean idsOk = !portfolioId.isEmpty() && !portfolioUuid.isEmpty();
-        this.flexImportConfigured = envWantsImport && idsOk && mapsOk;
-
-        if (envWantsImport && !flexImportConfigured)
-        {
-            logger.warn(
-                            "FLEX_IMPORT_VIA_REDIS is true but FLEX_IMPORT_PORTFOLIO_ID, FLEX_PORTFOLIO_UUID, or FLEX_CURRENCY_ACCOUNT_MAP is missing/invalid; flex Redis import disabled"); //$NON-NLS-1$
-        }
+        this.flexImportConfigured = envWantsImport;
     }
 
     private static String trimOrEmpty(String s)
@@ -165,7 +157,7 @@ public class RedisFlexImportListener
 
         if (!flexImportConfigured)
         {
-            logger.info("Redis flex import listener skipped (set FLEX_IMPORT_VIA_REDIS=true and portfolio env)"); //$NON-NLS-1$
+            logger.info("Redis flex import listener skipped (set FLEX_IMPORT_VIA_REDIS=true)"); //$NON-NLS-1$
             return;
         }
 
@@ -310,7 +302,7 @@ public class RedisFlexImportListener
                 return;
             }
 
-            String rawPath = readString(payload, "file_path").orElse(""); //$NON-NLS-1$
+            String rawPath = readString(payload, "relative_path").orElse(readString(payload, "file_path").orElse("")); //$NON-NLS-1$ //$NON-NLS-2$
             if (rawPath.isEmpty())
             {
                 logger.warn("flex_import_ready message missing file_path: {}", message); //$NON-NLS-1$
@@ -318,16 +310,41 @@ public class RedisFlexImportListener
             }
 
             Path path = Paths.get(rawPath);
-            String relativeFileName = path.getFileName() != null ? path.getFileName().toString() : rawPath;
+            String relativeFileName = path.isAbsolute() && path.getFileName() != null ? path.getFileName().toString()
+                            : path.toString();
 
             logger.info("Redis flex import: file {}", relativeFileName); //$NON-NLS-1$
 
-            Client client = portfolioFileService.getPortfolio(portfolioId);
+            JsonObject importConfig = payload.has("import_config") && payload.get("import_config").isJsonObject() //$NON-NLS-1$ //$NON-NLS-2$
+                            ? payload.getAsJsonObject("import_config") //$NON-NLS-1$
+                            : new JsonObject();
+
+            String targetPortfolioId = readString(payload, "portfolio_id").orElse(portfolioId); //$NON-NLS-1$
+            String targetPortfolioUuid = readString(importConfig, "portfolioUUID").orElse(portfolioUuid); //$NON-NLS-1$
+            Optional<String> targetSecondaryPortfolioUuid = readString(importConfig, "secondaryPortfolioUUID") //$NON-NLS-1$
+                            .or(() -> secondaryPortfolioUuid);
+            Map<String, String> targetCurrencyAccountMap = readStringMap(importConfig, "currencyAccountMap") //$NON-NLS-1$
+                            .orElse(currencyAccountMap);
+            Map<String, String> targetCurrencySecondaryAccountMap = readStringMap(importConfig,
+                            "currencySecondaryAccountMap").orElse(currencySecondaryAccountMap); //$NON-NLS-1$
+            boolean targetConvertBuySellToDelivery = readBoolean(importConfig, "convertBuySellToDelivery") //$NON-NLS-1$
+                            .orElse(convertBuySellToDelivery);
+            boolean targetRemoveDividends = readBoolean(importConfig, "removeDividends").orElse(removeDividends); //$NON-NLS-1$
+            boolean targetImportNotes = readBoolean(importConfig, "importNotes").orElse(importNotes); //$NON-NLS-1$
+
+            if (targetPortfolioId.isEmpty() || targetPortfolioUuid.isEmpty() || targetCurrencyAccountMap.isEmpty())
+            {
+                logger.warn(
+                                "Skipping Redis flex import: portfolio_id, portfolioUUID, or currencyAccountMap missing in message and env fallback"); //$NON-NLS-1$
+                return;
+            }
+
+            Client client = portfolioFileService.getPortfolio(targetPortfolioId);
             if (client == null)
             {
                 logger.warn(
                                 "Skipping Redis flex import: portfolio {} is not in cache — open it first (e.g. GET /api/v1/portfolios/{})", //$NON-NLS-1$
-                                portfolioId);
+                                targetPortfolioId, targetPortfolioId);
                 return;
             }
 
@@ -347,24 +364,25 @@ public class RedisFlexImportListener
             File file = resolvedPath.toFile();
 
             FlexImportService service = new FlexImportService();
-            Map<String, String> secondary = currencySecondaryAccountMap.isEmpty() ? new HashMap<>()
-                            : new HashMap<>(currencySecondaryAccountMap);
+            Map<String, String> secondary = targetCurrencySecondaryAccountMap.isEmpty() ? new HashMap<>()
+                            : new HashMap<>(targetCurrencySecondaryAccountMap);
 
-            FlexImportService.ImportResult result = service.importFlexReport(client, file, currencyAccountMap, secondary,
-                            portfolioUuid, secondaryPortfolioUuid.orElse(null), convertBuySellToDelivery,
-                            removeDividends, importNotes);
+            FlexImportService.ImportResult result = service.importFlexReport(client, file, targetCurrencyAccountMap,
+                            secondary, targetPortfolioUuid, targetSecondaryPortfolioUuid.orElse(null),
+                            targetConvertBuySellToDelivery, targetRemoveDividends, targetImportNotes);
 
             if (result.getItemsImported() > 0)
             {
                 try
                 {
-                    portfolioFileService.saveFile(portfolioId);
-                    logger.info("Portfolio saved after Redis flex import — portfolio: {}, items: {}", portfolioId, //$NON-NLS-1$
+                    portfolioFileService.saveFile(targetPortfolioId);
+                    logger.info("Portfolio saved after Redis flex import — portfolio: {}, items: {}", //$NON-NLS-1$
+                                    targetPortfolioId,
                                     result.getItemsImported());
                 }
                 catch (Exception e)
                 {
-                    logger.error("Failed to save portfolio after flex import: {}", portfolioId, e); //$NON-NLS-1$
+                    logger.error("Failed to save portfolio after flex import: {}", targetPortfolioId, e); //$NON-NLS-1$
                 }
             }
 
@@ -397,6 +415,33 @@ public class RedisFlexImportListener
 
         String value = element.getAsString();
         return (value == null || value.isBlank()) ? Optional.empty() : Optional.of(value.trim());
+    }
+
+    private Optional<Map<String, String>> readStringMap(JsonObject object, String property)
+    {
+        JsonElement element = object.get(property);
+        if (element == null || element.isJsonNull() || !element.isJsonObject())
+            return Optional.empty();
+
+        Map<String, String> result = new HashMap<>();
+        for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet())
+        {
+            if (entry.getValue() == null || entry.getValue().isJsonNull())
+                continue;
+            String key = trimOrEmpty(entry.getKey());
+            String value = trimOrEmpty(entry.getValue().getAsString());
+            if (!key.isEmpty() && !value.isEmpty())
+                result.put(key, value);
+        }
+        return Optional.of(result);
+    }
+
+    private Optional<Boolean> readBoolean(JsonObject object, String property)
+    {
+        JsonElement element = object.get(property);
+        if (element == null || element.isJsonNull())
+            return Optional.empty();
+        return Optional.of(element.getAsBoolean());
     }
 
     private void sleep(long millis)
