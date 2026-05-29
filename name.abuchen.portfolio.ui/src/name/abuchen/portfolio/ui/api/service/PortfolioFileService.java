@@ -669,12 +669,7 @@ public class PortfolioFileService {
         }
 
         Client client = ClientFactory.load(file, currentPassword, new MinimalProgressMonitor());
-        Set<SaveFlag> flags = EnumSet.copyOf(client.getSaveFlags());
-        if (!flags.contains(SaveFlag.ENCRYPTED)) {
-            throw new IllegalArgumentException("Portfolio file is not encrypted");
-        }
-
-        ClientFactory.saveAs(client, file, newPassword, flags);
+        ClientFactory.changePassword(client, file, newPassword);
         clientCache.put(fileId, client);
 
         var fileInfo = createBasicFileInfo(file, relativePath, fileId);

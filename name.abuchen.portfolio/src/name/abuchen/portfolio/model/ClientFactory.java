@@ -685,6 +685,19 @@ public class ClientFactory
         writeFile(client, file, password, flags, true);
     }
 
+    public static void changePassword(final Client client, final File file, char[] password) throws IOException
+    {
+        Set<SaveFlag> flags = EnumSet.copyOf(client.getSaveFlags());
+
+        if (!flags.contains(SaveFlag.ENCRYPTED))
+            throw new IOException(Messages.MsgPasswordMissing);
+
+        if (password == null)
+            throw new IOException(Messages.MsgPasswordMissing);
+
+        writeFile(client, file, password, flags, true);
+    }
+
     public static void exportAs(final Client client, final File file, char[] password, Set<SaveFlag> flags)
                     throws IOException
     {
