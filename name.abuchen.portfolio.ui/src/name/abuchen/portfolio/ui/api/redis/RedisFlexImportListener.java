@@ -33,8 +33,8 @@ import redis.clients.jedis.exceptions.JedisConnectionException;
  * Subscribes to {@code flex:import_ready} (published by tws-api after a Flex XML is written)
  * and imports the file into a configured portfolio via {@link FlexImportService}.
  * <p>
- * Enable with {@code FLEX_IMPORT_VIA_REDIS=true}. Import messages can carry {@code portfolio_id}
- * and {@code import_config}; legacy environment variables are used as a fallback.
+ * Enable with {@code FLEX_IMPORT_VIA_REDIS=true}. Import messages must carry {@code portfolio_id}
+ * and {@code import_config}; legacy environment variables are parsed but are not used as fallback.
  * <p>
  * Imports only run if that portfolio is <strong>already in memory</strong> (opened via the REST API
  * or UI). Encrypted files must be opened with a password through those paths first; this listener
@@ -305,7 +305,7 @@ public class RedisFlexImportListener
             String rawPath = readString(payload, "relative_path").orElse(readString(payload, "file_path").orElse("")); //$NON-NLS-1$ //$NON-NLS-2$
             if (rawPath.isEmpty())
             {
-                logger.warn("flex_import_ready message missing file_path: {}", message); //$NON-NLS-1$
+                logger.warn("flex_import_ready message missing relative_path or file_path: {}", message); //$NON-NLS-1$
                 return;
             }
 
@@ -434,7 +434,7 @@ public class RedisFlexImportListener
             if (!key.isEmpty() && !value.isEmpty())
                 result.put(key, value);
         }
-        return Optional.of(result);
+        return result.isEmpty() ? Optional.empty() : Optional.of(result);
     }
 
     private Optional<Boolean> readBoolean(JsonObject object, String property)
