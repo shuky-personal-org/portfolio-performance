@@ -206,7 +206,7 @@ public class PortfolioController extends BaseController {
      */
     @GET
     @Path("/{portfolioId}/download")
-    @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_OCTET_STREAM })
     public Response downloadPortfolio(@PathParam("portfolioId") String portfolioId) {
         try {
             logger.info("Downloading portfolio file: {}", portfolioId);
