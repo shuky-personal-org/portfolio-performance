@@ -45,6 +45,38 @@ public class PortfolioFileServiceTest
     }
 
     @Test
+    public void renamesPortfolioFileWithExistingExtension() throws Exception
+    {
+        var root = folder.getRoot().toPath();
+        Files.writeString(root.resolve("Original.xml"), "<client/>");
+        var service = new PortfolioFileService(root.toString());
+        var sourceFile = service.listPortfolioFiles().get(0);
+
+        var renamed = service.renamePortfolioFile(sourceFile.getId(), "Renamed");
+
+        assertThat(renamed.getName(), is("Renamed"));
+        assertThat(renamed.getPath(), is("Renamed.xml"));
+        assertThat(Files.exists(root.resolve("Original.xml")), is(false));
+        assertThat(Files.readString(root.resolve("Renamed.xml")), is("<client/>"));
+        assertThat(service.listPortfolioFiles().size(), is(1));
+    }
+
+    @Test(expected = java.nio.file.FileAlreadyExistsException.class)
+    public void rejectsRenameToExistingPortfolioFile() throws Exception
+    {
+        var root = folder.getRoot().toPath();
+        Files.writeString(root.resolve("Original.xml"), "<client/>");
+        Files.writeString(root.resolve("Existing.xml"), "<client/>");
+        var service = new PortfolioFileService(root.toString());
+        var sourceFile = service.listPortfolioFiles().stream()
+                        .filter(file -> file.getPath().equals("Original.xml"))
+                        .findFirst()
+                        .orElseThrow();
+
+        service.renamePortfolioFile(sourceFile.getId(), "Existing.xml");
+    }
+
+    @Test
     public void movesRemovedPortfolioFileToDeletedFolder() throws Exception
     {
         var root = folder.getRoot().toPath();

@@ -51,7 +51,7 @@ public class PortfolioController extends BaseController {
     
     /**
      * List all portfolios in the portfolio directory.
-     * 
+     *
      * @return List of portfolios
      */
     @GET
@@ -153,6 +153,51 @@ public class PortfolioController extends BaseController {
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
                 "Failed to duplicate portfolio: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Rename an existing portfolio file.
+     *
+     * @param portfolioId The portfolio ID
+     * @param request Requested portfolio file name or path
+     * @return Renamed portfolio file information
+     */
+    @POST
+    @Path("/{portfolioId}/rename")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response renamePortfolio(@PathParam("portfolioId") String portfolioId, PortfolioFileRequest request) {
+        try {
+            logger.info("Renaming portfolio file: {}", portfolioId);
+
+            PortfolioFileInfo fileInfo = portfolioFileService.renamePortfolioFile(portfolioId, getRequestedPath(request));
+
+            return Response.ok(fileInfo).build();
+
+        } catch (FileAlreadyExistsException e) {
+            logger.warn("Portfolio rename target already exists: {}", e.getMessage());
+            return createErrorResponse(Response.Status.CONFLICT,
+                "PORTFOLIO_ALREADY_EXISTS",
+                e.getMessage());
+
+        } catch (FileNotFoundException e) {
+            logger.warn("Portfolio not found for rename: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "PORTFOLIO_NOT_FOUND",
+                e.getMessage());
+
+        } catch (IllegalArgumentException | SecurityException e) {
+            logger.warn("Invalid portfolio rename request: {}", e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "INVALID_REQUEST",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.error("Failed to rename portfolio: {}", portfolioId, e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to rename portfolio: " + e.getMessage());
         }
     }
 

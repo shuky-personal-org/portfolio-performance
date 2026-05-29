@@ -67,7 +67,7 @@ public class PortfolioFileService {
     
     /**
      * Get the singleton instance of PortfolioFileService.
-     * 
+     *
      * @return The singleton instance
      */
     public static synchronized PortfolioFileService getInstance() {
@@ -566,6 +566,35 @@ public class PortfolioFileService {
 
         String relativePath = portfolioDirectory.relativize(targetPath).toString();
         return createBasicFileInfo(targetPath.toFile(), relativePath, generateFileId(relativePath));
+    }
+
+    /**
+     * Rename an existing portfolio file.
+     *
+     * @param fileId The ID of the portfolio file to rename
+     * @param requestedPath The requested relative path or name for the renamed file
+     * @return PortfolioFileInfo for the renamed file
+     * @throws IOException if the portfolio file cannot be renamed
+     */
+    public PortfolioFileInfo renamePortfolioFile(String fileId, String requestedPath) throws IOException {
+        String sourceRelativePath = findFileById(fileId);
+        Path sourcePath = resolveRelativePath(sourceRelativePath);
+        String targetRelativePath = normalizeRequestedPortfolioPath(requestedPath, getFileExtension(sourcePath));
+        Path targetPath = resolveNewPortfolioPath(targetRelativePath);
+
+        logger.info("Renaming portfolio file {} to {}", sourcePath, targetPath);
+
+        Files.createDirectories(targetPath.getParent());
+        Files.move(sourcePath, targetPath);
+
+        String relativePath = portfolioDirectory.relativize(targetPath).toString();
+        String renamedFileId = generateFileId(relativePath);
+        Client cachedClient = clientCache.remove(fileId);
+        if (cachedClient != null) {
+            clientCache.put(renamedFileId, cachedClient);
+        }
+
+        return createBasicFileInfo(targetPath.toFile(), relativePath, renamedFileId);
     }
 
     /**
