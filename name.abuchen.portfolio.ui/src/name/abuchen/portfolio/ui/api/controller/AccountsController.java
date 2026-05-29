@@ -25,6 +25,7 @@ import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.AccountTransaction;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.money.CurrencyConverter;
+import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.ui.api.dto.AccountValueUpdateDto;
 import name.abuchen.portfolio.ui.api.dto.AccountDto;
 import name.abuchen.portfolio.ui.api.dto.TransactionDto;
@@ -362,8 +363,7 @@ public class AccountsController extends BaseController {
     
     /**
      * Create a new account.
-     * TODO: Implement account creation
-     * 
+     *
      * @param portfolioId The portfolio ID
      * @param accountData Account data
      * @return Created account
@@ -374,15 +374,66 @@ public class AccountsController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response createAccount(@PathParam("portfolioId") String portfolioId,
                                   Map<String, Object> accountData) {
-        // TODO: Implement account creation
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Account creation not yet implemented");
+        try {
+            logger.info("Creating account for portfolio {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before creating accounts");
+            }
+
+            String name = getString(accountData, "name");
+            if (name == null || name.isBlank()) {
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "INVALID_REQUEST",
+                    "Account name is required");
+            }
+
+            String currencyCode = getString(accountData, "currencyCode");
+            if (currencyCode == null || currencyCode.isBlank())
+                currencyCode = client.getBaseCurrency();
+            currencyCode = normalizeCurrencyCode(currencyCode);
+
+            if (!CurrencyUnit.containsCurrencyCode(currencyCode)) {
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "INVALID_CURRENCY",
+                    "Unsupported currency code: " + currencyCode);
+            }
+
+            Account account = new Account();
+            account.setName(name.trim());
+            account.setCurrencyCode(currencyCode);
+            account.setNote(getString(accountData, "note"));
+
+            if (accountData != null && accountData.containsKey("retired"))
+                account.setRetired(Boolean.TRUE.equals(accountData.get("retired")));
+
+            client.addAccount(account);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("account", convertAccountToDtoWithValues(account, client));
+
+            logger.info("Created account {} ({}) for portfolio {}", account.getName(), account.getUUID(), portfolioId);
+
+            return Response.status(Response.Status.CREATED).entity(response).build();
+        } catch (Exception e) {
+            logger.error("Unexpected error creating account for portfolio {}: {}", portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
      * Update an existing account.
-     * TODO: Implement account update
      * 
      * @param portfolioId The portfolio ID
      * @param accountUuid The account UUID
@@ -396,15 +447,97 @@ public class AccountsController extends BaseController {
     public Response updateAccount(@PathParam("portfolioId") String portfolioId,
                                   @PathParam("accountUuid") String accountUuid,
                                   Map<String, Object> accountData) {
-        // TODO: Implement account update
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Account update not yet implemented");
+        try {
+            logger.info("Updating account {} for portfolio {}", accountUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before updating accounts");
+            }
+
+            Account account = findAccount(client, accountUuid);
+
+            if (account == null) {
+                logger.warn("Account not found: {} in portfolio: {}", accountUuid, portfolioId);
+                return createErrorResponse(Response.Status.NOT_FOUND,
+                    "Account not found",
+                    "Account with UUID " + accountUuid + " not found in portfolio");
+            }
+
+            if (accountData == null || accountData.isEmpty()) {
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "INVALID_REQUEST",
+                    "Request body must contain at least one account field");
+            }
+
+            if (accountData.containsKey("name")) {
+                String name = getString(accountData, "name");
+                if (name == null || name.isBlank()) {
+                    return createErrorResponse(Response.Status.BAD_REQUEST,
+                        "INVALID_REQUEST",
+                        "Account name must not be empty");
+                }
+                account.setName(name.trim());
+            }
+
+            if (accountData.containsKey("note"))
+                account.setNote(getString(accountData, "note"));
+
+            if (accountData.containsKey("retired"))
+                account.setRetired(Boolean.TRUE.equals(accountData.get("retired")));
+
+            if (accountData.containsKey("currencyCode")) {
+                String currencyCode = getString(accountData, "currencyCode");
+                if (currencyCode == null || currencyCode.isBlank()) {
+                    return createErrorResponse(Response.Status.BAD_REQUEST,
+                        "INVALID_REQUEST",
+                        "Currency code must not be empty");
+                }
+
+                currencyCode = normalizeCurrencyCode(currencyCode);
+                if (!CurrencyUnit.containsCurrencyCode(currencyCode)) {
+                    return createErrorResponse(Response.Status.BAD_REQUEST,
+                        "INVALID_CURRENCY",
+                        "Unsupported currency code: " + currencyCode);
+                }
+
+                if (!currencyCode.equals(account.getCurrencyCode())) {
+                    if (!account.getTransactions().isEmpty()) {
+                        return createErrorResponse(Response.Status.CONFLICT,
+                            "ACCOUNT_HAS_TRANSACTIONS",
+                            "Account currency cannot be changed while transactions exist");
+                    }
+
+                    account.setCurrencyCode(currencyCode);
+                }
+            }
+
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("account", convertAccountToDtoWithValues(account, client));
+
+            logger.info("Updated account {} ({}) for portfolio {}", account.getName(), accountUuid, portfolioId);
+
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            logger.error("Unexpected error updating account {} for portfolio {}: {}",
+                accountUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
      * Delete an account.
-     * TODO: Implement account deletion
      * 
      * @param portfolioId The portfolio ID
      * @param accountUuid The account UUID
@@ -415,10 +548,54 @@ public class AccountsController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteAccount(@PathParam("portfolioId") String portfolioId,
                                   @PathParam("accountUuid") String accountUuid) {
-        // TODO: Implement account deletion
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Account deletion not yet implemented");
+        try {
+            logger.info("Deleting account {} for portfolio {}", accountUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before deleting accounts");
+            }
+
+            Account account = findAccount(client, accountUuid);
+
+            if (account == null) {
+                logger.warn("Account not found: {} in portfolio: {}", accountUuid, portfolioId);
+                return createErrorResponse(Response.Status.NOT_FOUND,
+                    "Account not found",
+                    "Account with UUID " + accountUuid + " not found in portfolio");
+            }
+
+            if (!account.getTransactions().isEmpty()) {
+                return createErrorResponse(Response.Status.CONFLICT,
+                    "ACCOUNT_HAS_TRANSACTIONS",
+                    "Only accounts without transactions can be deleted");
+            }
+
+            String accountName = account.getName();
+            client.removeAccount(account);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("accountUuid", accountUuid);
+            response.put("deletedAccountName", accountName);
+
+            logger.info("Deleted account {} ({}) for portfolio {}", accountName, accountUuid, portfolioId);
+
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            logger.error("Unexpected error deleting account {} for portfolio {}: {}",
+                accountUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -477,6 +654,24 @@ public class AccountsController extends BaseController {
             throw new IllegalArgumentException("Account value is outside the supported range");
 
         return Math.round(internalAmount);
+    }
+
+    private Account findAccount(Client client, String accountUuid) {
+        return client.getAccounts().stream()
+            .filter(a -> accountUuid.equals(a.getUUID()))
+            .findFirst()
+            .orElse(null);
+    }
+
+    private String getString(Map<String, Object> data, String key) {
+        if (data == null || !data.containsKey(key) || data.get(key) == null)
+            return null;
+
+        return data.get(key).toString();
+    }
+
+    private String normalizeCurrencyCode(String currencyCode) {
+        return currencyCode.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
     private TransactionDto convertAccountTransactionToDto(AccountTransaction transaction, Account account) {
