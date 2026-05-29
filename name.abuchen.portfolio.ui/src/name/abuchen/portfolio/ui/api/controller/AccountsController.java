@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 import javax.ws.rs.Consumes;
@@ -25,6 +26,7 @@ import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.AccountTransaction;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.money.CurrencyConverter;
+import name.abuchen.portfolio.ui.api.dto.AccountMutationDto;
 import name.abuchen.portfolio.ui.api.dto.AccountValueUpdateDto;
 import name.abuchen.portfolio.ui.api.dto.AccountDto;
 import name.abuchen.portfolio.ui.api.dto.TransactionDto;
@@ -33,6 +35,8 @@ import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.AccountSnapshot;
+import name.abuchen.portfolio.ui.api.service.AccountManagementService;
+import name.abuchen.portfolio.ui.api.service.AccountManagementService.AccountDeletionException;
 import name.abuchen.portfolio.ui.api.service.AccountValueAdjustmentService;
 import name.abuchen.portfolio.ui.api.dto.ValueDataPointDto;
 
@@ -362,7 +366,6 @@ public class AccountsController extends BaseController {
     
     /**
      * Create a new account.
-     * TODO: Implement account creation
      * 
      * @param portfolioId The portfolio ID
      * @param accountData Account data
@@ -373,16 +376,49 @@ public class AccountsController extends BaseController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response createAccount(@PathParam("portfolioId") String portfolioId,
-                                  Map<String, Object> accountData) {
-        // TODO: Implement account creation
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Account creation not yet implemented");
+                                  AccountMutationDto accountData) {
+        try {
+            logger.info("Creating account for portfolio {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before creating accounts");
+            }
+
+            Account account = AccountManagementService.createAccount(client, accountData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("account", convertAccountToDtoWithValues(account, client));
+            response.put("message", "Account created successfully");
+
+            logger.info("Created account {} ({}) for portfolio {}", account.getName(), account.getUUID(), portfolioId);
+
+            return Response.status(Response.Status.CREATED).entity(response).build();
+
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid account creation request for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error creating account for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
      * Update an existing account.
-     * TODO: Implement account update
      * 
      * @param portfolioId The portfolio ID
      * @param accountUuid The account UUID
@@ -395,16 +431,55 @@ public class AccountsController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response updateAccount(@PathParam("portfolioId") String portfolioId,
                                   @PathParam("accountUuid") String accountUuid,
-                                  Map<String, Object> accountData) {
-        // TODO: Implement account update
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Account update not yet implemented");
+                                  AccountMutationDto accountData) {
+        try {
+            logger.info("Updating account {} for portfolio {}", accountUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before updating accounts");
+            }
+
+            Account account = AccountManagementService.updateAccount(client, accountUuid, accountData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("account", convertAccountToDtoWithValues(account, client));
+            response.put("message", "Account updated successfully");
+
+            logger.info("Updated account {} ({}) for portfolio {}", account.getName(), accountUuid, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (NoSuchElementException e) {
+            logger.warn("Account not found: {} in portfolio: {}", accountUuid, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Account not found",
+                e.getMessage());
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid account update request for account {} in portfolio {}: {}",
+                accountUuid, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error updating account {} for portfolio {}: {}",
+                accountUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
      * Delete an account.
-     * TODO: Implement account deletion
      * 
      * @param portfolioId The portfolio ID
      * @param accountUuid The account UUID
@@ -415,10 +490,51 @@ public class AccountsController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteAccount(@PathParam("portfolioId") String portfolioId,
                                   @PathParam("accountUuid") String accountUuid) {
-        // TODO: Implement account deletion
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Account deletion not yet implemented");
+        try {
+            logger.info("Deleting account {} for portfolio {}", accountUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before deleting accounts");
+            }
+
+            Account account = AccountManagementService.deleteAccount(client, accountUuid);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("accountUuid", accountUuid);
+            response.put("accountName", account.getName());
+            response.put("message", "Account deleted successfully");
+
+            logger.info("Deleted account {} ({}) for portfolio {}", account.getName(), accountUuid, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (NoSuchElementException e) {
+            logger.warn("Account not found: {} in portfolio: {}", accountUuid, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Account not found",
+                e.getMessage());
+        } catch (AccountDeletionException e) {
+            logger.warn("Cannot delete account {} in portfolio {}: {} transaction(s)",
+                accountUuid, portfolioId, e.getTransactionsCount());
+            return createErrorResponse(Response.Status.CONFLICT,
+                "Account has transactions",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error deleting account {} for portfolio {}: {}",
+                accountUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
