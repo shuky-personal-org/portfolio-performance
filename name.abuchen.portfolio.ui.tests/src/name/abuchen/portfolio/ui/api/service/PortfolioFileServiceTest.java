@@ -2,13 +2,19 @@ package name.abuchen.portfolio.ui.api.service;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.fail;
 
 import java.io.FileNotFoundException;
 import java.nio.file.Files;
 
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+
+import name.abuchen.portfolio.model.Client;
+import name.abuchen.portfolio.model.ClientFactory;
+import name.abuchen.portfolio.model.ClientFileType;
 
 public class PortfolioFileServiceTest
 {
@@ -116,6 +122,47 @@ public class PortfolioFileServiceTest
 
         assertThat(path, is(root.resolve("Download.xml")));
         assertThat(Files.readString(path), is("<client/>"));
+    }
+
+    @Test
+    public void changesEncryptedPortfolioPassword() throws Exception
+    {
+        var root = folder.getRoot().toPath();
+        var portfolioFile = root.resolve("Secure.portfolio").toFile();
+        ClientFactory.saveAs(new Client(), portfolioFile, "oldpass".toCharArray(), ClientFileType.BINARY_AES256.getFlags());
+
+        var service = new PortfolioFileService(root.toString());
+        var sourceFile = service.listPortfolioFiles().get(0);
+
+        var updated = service.changePortfolioPassword(sourceFile.getId(), "oldpass".toCharArray(),
+                        "newpass".toCharArray());
+
+        assertThat(updated.getName(), is("Secure"));
+        assertThat(updated.isEncrypted(), is(true));
+        assertThat(ClientFactory.isEncrypted(portfolioFile), is(true));
+
+        ClientFactory.load(portfolioFile, "newpass".toCharArray(), new NullProgressMonitor());
+
+        try
+        {
+            ClientFactory.load(portfolioFile, "oldpass".toCharArray(), new NullProgressMonitor());
+            fail("Old password should no longer open the portfolio");
+        }
+        catch (java.io.IOException e)
+        {
+            // Expected: the old key can no longer decrypt the file.
+        }
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsPasswordChangeForUnencryptedPortfolio() throws Exception
+    {
+        var root = folder.getRoot().toPath();
+        Files.writeString(root.resolve("Plain.xml"), "<client/>");
+        var service = new PortfolioFileService(root.toString());
+        var sourceFile = service.listPortfolioFiles().get(0);
+
+        service.changePortfolioPassword(sourceFile.getId(), "oldpass".toCharArray(), "newpass".toCharArray());
     }
 
     @Test(expected = SecurityException.class)

@@ -636,6 +636,54 @@ public class PortfolioFileService {
         return path;
     }
 
+    /**
+     * Change the password of an encrypted portfolio file.
+     *
+     * @param fileId The ID of the portfolio file
+     * @param currentPassword The current portfolio password
+     * @param newPassword The new portfolio password
+     * @return Updated portfolio file information
+     * @throws IOException if the password cannot be changed
+     */
+    public PortfolioFileInfo changePortfolioPassword(String fileId, char[] currentPassword, char[] newPassword)
+                    throws IOException {
+        logger.info("Changing password for portfolio file with ID: {}", fileId);
+
+        if (currentPassword == null || currentPassword.length == 0) {
+            throw new IllegalArgumentException("Current password is required");
+        }
+
+        if (newPassword == null || newPassword.length < 6) {
+            throw new IllegalArgumentException("New password must be at least 6 characters long");
+        }
+
+        String relativePath = findFileById(fileId);
+        Path path = resolveRelativePath(relativePath);
+        if (!Files.isRegularFile(path)) {
+            throw new FileNotFoundException("Portfolio file not found: " + relativePath);
+        }
+
+        File file = path.toFile();
+        if (!ClientFactory.isEncrypted(file)) {
+            throw new IllegalArgumentException("Portfolio file is not encrypted");
+        }
+
+        Client client = ClientFactory.load(file, currentPassword, new MinimalProgressMonitor());
+        Set<SaveFlag> flags = EnumSet.copyOf(client.getSaveFlags());
+        if (!flags.contains(SaveFlag.ENCRYPTED)) {
+            throw new IllegalArgumentException("Portfolio file is not encrypted");
+        }
+
+        ClientFactory.saveAs(client, file, newPassword, flags);
+        clientCache.put(fileId, client);
+
+        var fileInfo = createBasicFileInfo(file, relativePath, fileId);
+        populateClientData(fileInfo, client, file);
+
+        logger.info("Portfolio file password changed successfully: {}", file.getAbsolutePath());
+        return fileInfo;
+    }
+
     private Path resolveRelativePath(String relativePath) {
         if (relativePath == null || relativePath.trim().isEmpty()) {
             throw new IllegalArgumentException("File path cannot be null or empty");

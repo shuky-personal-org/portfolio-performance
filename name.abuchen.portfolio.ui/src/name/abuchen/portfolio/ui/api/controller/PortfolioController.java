@@ -36,6 +36,7 @@ import name.abuchen.portfolio.ui.api.dto.PerformanceCalculationDto;
 import name.abuchen.portfolio.ui.api.dto.PerformanceCalculationDto.MoneyValueDto;
 import name.abuchen.portfolio.ui.api.dto.PortfolioFileInfo;
 import name.abuchen.portfolio.ui.api.dto.PortfolioFileRequest;
+import name.abuchen.portfolio.ui.api.dto.PortfolioPasswordChangeRequest;
 import name.abuchen.portfolio.ui.api.service.QuoteFeedApiKeyService;
 import name.abuchen.portfolio.util.Interval;
 
@@ -198,6 +199,50 @@ public class PortfolioController extends BaseController {
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
                 "Failed to rename portfolio: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Change the password of an encrypted portfolio file.
+     *
+     * @param portfolioId The portfolio ID
+     * @param request Current and new password values
+     * @return Updated portfolio file information
+     */
+    @POST
+    @Path("/{portfolioId}/password")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response changePortfolioPassword(@PathParam("portfolioId") String portfolioId,
+                    PortfolioPasswordChangeRequest request) {
+        try {
+            logger.info("Changing portfolio password: {}", portfolioId);
+
+            String currentPassword = request == null ? null : request.getCurrentPassword();
+            String newPassword = request == null ? null : request.getNewPassword();
+            PortfolioFileInfo fileInfo = portfolioFileService.changePortfolioPassword(portfolioId,
+                            currentPassword == null ? null : currentPassword.toCharArray(),
+                            newPassword == null ? null : newPassword.toCharArray());
+
+            return Response.ok(fileInfo).build();
+
+        } catch (FileNotFoundException e) {
+            logger.warn("Portfolio not found for password change: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "PORTFOLIO_NOT_FOUND",
+                e.getMessage());
+
+        } catch (IllegalArgumentException | SecurityException e) {
+            logger.warn("Invalid portfolio password change request: {}", e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "INVALID_REQUEST",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.warn("Failed to change portfolio password: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "PASSWORD_CHANGE_FAILED",
+                e.getMessage());
         }
     }
 
