@@ -46,7 +46,12 @@ public class PasswordDialog extends AbstractDialog
 
     public PasswordDialog(Shell parentShell)
     {
-        super(parentShell, Messages.TitlePasswordDialog, new PasswordModel());
+        this(parentShell, Messages.TitlePasswordDialog);
+    }
+
+    public PasswordDialog(Shell parentShell, String title)
+    {
+        super(parentShell, title, new PasswordModel());
     }
 
     @Override

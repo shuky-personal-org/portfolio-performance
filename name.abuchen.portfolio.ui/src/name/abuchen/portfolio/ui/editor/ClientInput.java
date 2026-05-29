@@ -282,6 +282,39 @@ public class ClientInput
         });
     }
 
+    public void doChangePassword(Shell shell)
+    {
+        if (clientFile == null)
+            return;
+
+        var pwdDialog = new PasswordDialog(shell, Messages.TitleChangePasswordDialog);
+        if (pwdDialog.open() != Window.OK)
+            return;
+
+        var password = pwdDialog.getPassword().toCharArray();
+
+        BusyIndicator.showWhile(shell.getDisplay(), () -> {
+            try
+            {
+                if (preferences.getBoolean(UIConstants.Preferences.CREATE_BACKUP_BEFORE_SAVING, true))
+                    createBackup(clientFile, "backup"); //$NON-NLS-1$
+
+                ClientFactory.changePassword(client, clientFile, password);
+                storePreferences(false);
+
+                broker.post(UIConstants.Event.File.SAVED, clientFile.getAbsolutePath());
+                setDirty(false, false);
+                listeners.forEach(ClientInputListener::onSaved);
+            }
+            catch (IOException e)
+            {
+                PortfolioPlugin.log(e);
+                ErrorDialog.openError(shell, Messages.LabelError, e.getMessage(),
+                                new Status(IStatus.ERROR, PortfolioPlugin.PLUGIN_ID, e.getMessage(), e));
+            }
+        });
+    }
+
     /**
      * Exports the current data into a new file without changing any of the
      * editor settings.

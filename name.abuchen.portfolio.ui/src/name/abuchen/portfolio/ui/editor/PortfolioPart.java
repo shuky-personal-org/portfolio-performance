@@ -430,6 +430,11 @@ public class PortfolioPart implements ClientInputListener
         this.clientInput.doSaveAs(shell, extension, flags);
     }
 
+    public void doChangePassword(Shell shell)
+    {
+        this.clientInput.doChangePassword(shell);
+    }
+
     public void doExportAs(Shell shell, String extension, Set<SaveFlag> flags)
     {
         this.clientInput.doExportAs(shell, extension, flags);

@@ -46,6 +46,7 @@
             <parameters xmi:id="_Y5x4IJ46EeekX_bya3JT0g" elementId="" name="name.abuchen.portfolio.ui.param.file-type" value="xml+zip"/>
           </children>
         </children>
+        <children xsi:type="menu:HandledMenuItem" xmi:id="_SHU8ChangePasswordMenuItem" elementId="name.abuchen.portfolio.ui.menu.file.changePassword" label="%command.changePassword.name" tooltip="%command.changePassword.tooltip" command="_SHU8ChangePasswordCommand"/>
         <children xsi:type="menu:HandledMenuItem" xmi:id="_sXrYAG_lEeWs-Og7n4Tz9g" elementId="name.abuchen.portfolio.ui.menu.file.saveAll" label="%command.saveAll.name" tooltip="" mnemonics="" command="_xEtu4G_lEeWs-Og7n4Tz9g"/>
         <children xsi:type="menu:MenuSeparator" xmi:id="_Bd9XUBfWEeOders_POVQHQ" elementId="name.abuchen.portfolio.ui.menuseparator.0"/>
         <children xsi:type="menu:Menu" xmi:id="_z1i4EIFWEeqj-NUx6jxeHA" elementId="name.abuchen.portfolio.bootstrap.menu.whrung" label="%command.switchCurrency.name">
@@ -197,6 +198,7 @@
   <handlers xmi:id="_pqCZoLdLEeO0acAVfaNMbA" elementId="name.abuchen.portfolio.ui.handler.preferences" contributionURI="bundleclass://name.abuchen.portfolio.ui/name.abuchen.portfolio.ui.handlers.OpenPreferenceDialogHandler" command="_7aSvMLdLEeO0acAVfaNMbA"/>
   <handlers xmi:id="_EWWbkPOiEeOtWc3KvKMOyw" elementId="name.abuchen.portfolio.ui.handler.saveAs" contributionURI="bundleclass://name.abuchen.portfolio.ui/name.abuchen.portfolio.ui.handlers.SaveAsFileHandler" command="_48Q94POhEeOtWc3KvKMOyw"/>
   <handlers xmi:id="_tnLNkPOkEeOHHf_SGgPLVA" elementId="name.abuchen.portfolio.ui.handler.save" contributionURI="bundleclass://name.abuchen.portfolio.ui/name.abuchen.portfolio.ui.handlers.SaveFileHandler" command="_rzHrcPOjEeOHHf_SGgPLVA"/>
+  <handlers xmi:id="_SHU8ChangePasswordHandler" elementId="name.abuchen.portfolio.ui.handler.changePassword" contributionURI="bundleclass://name.abuchen.portfolio.ui/name.abuchen.portfolio.ui.handlers.ChangePasswordHandler" command="_SHU8ChangePasswordCommand"/>
   <handlers xmi:id="_1sS-AG_lEeWs-Og7n4Tz9g" elementId="name.abuchen.portfolio.ui.handler.saveAll" contributionURI="bundleclass://name.abuchen.portfolio.ui/name.abuchen.portfolio.ui.handlers.SaveAllFileHandler" command="_xEtu4G_lEeWs-Og7n4Tz9g"/>
   <handlers xmi:id="_NCwdIPPFEeOuTsL2OeJEvQ" elementId="name.abuchen.portfolio.ui.handler.openSample" contributionURI="bundleclass://name.abuchen.portfolio.ui/name.abuchen.portfolio.ui.handlers.OpenSampleHandler" command="_C_T3sPPEEeOuTsL2OeJEvQ"/>
   <handlers xmi:id="_1bt2MPPLEeOuTsL2OeJEvQ" elementId="name.abuchen.portfolio.ui.handler.openPart" contributionURI="bundleclass://name.abuchen.portfolio.ui/name.abuchen.portfolio.ui.handlers.OpenPartHandler" command="_veiGEPPLEeOuTsL2OeJEvQ"/>
@@ -296,6 +298,7 @@
     <parameters xmi:id="_otbBwNzZEeyUBtACSRat_Q" elementId="name.abuchen.portfolio.ui.param.create-copy" name="create-copy"/>
   </commands>
   <commands xmi:id="_rzHrcPOjEeOHHf_SGgPLVA" elementId="org.eclipse.ui.file.save" commandName="saveCommand"/>
+  <commands xmi:id="_SHU8ChangePasswordCommand" elementId="name.abuchen.portfolio.ui.command.changePassword" commandName="%command.changePassword.name"/>
   <commands xmi:id="_xEtu4G_lEeWs-Og7n4Tz9g" elementId="org.eclipse.ui.file.saveAll" commandName="saveAllCommand"/>
   <commands xmi:id="_C_T3sPPEEeOuTsL2OeJEvQ" elementId="name.abuchen.portfolio.ui.command.openSample" commandName="openSampleCommand">
     <parameters xmi:id="_F9NzQPPEEeOuTsL2OeJEvQ" elementId="name.abuchen.portfolio.ui.param.samplefile" name="samplefile" optional="false"/>

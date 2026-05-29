@@ -2,15 +2,19 @@ package name.abuchen.portfolio.model;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
 
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+
+import name.abuchen.portfolio.money.CurrencyUnit;
 
 @SuppressWarnings("nls")
 public class ClientFactoryTest
@@ -206,5 +210,40 @@ public class ClientFactoryTest
         var flags = ClientFactory.getFlags(file);
         assertTrue(flags.contains(SaveFlag.XML));
         assertTrue(flags.contains(SaveFlag.ID_REFERENCES));
+    }
+
+    @Test
+    public void testChangePasswordForEncryptedPortfolio() throws IOException
+    {
+        var file = tempFolder.newFile("encrypted.portfolio");
+        var oldPassword = "old-password".toCharArray();
+        var newPassword = "new-password".toCharArray();
+
+        var client = new Client();
+        client.setBaseCurrency(CurrencyUnit.USD);
+
+        ClientFactory.saveAs(client, file, oldPassword,
+                        EnumSet.of(SaveFlag.BINARY, SaveFlag.ENCRYPTED, SaveFlag.AES256));
+
+        var loadedWithOldPassword = ClientFactory.load(file, oldPassword, new NullProgressMonitor());
+        assertEquals(CurrencyUnit.USD, loadedWithOldPassword.getBaseCurrency());
+
+        ClientFactory.changePassword(loadedWithOldPassword, file, newPassword);
+
+        try
+        {
+            ClientFactory.load(file, oldPassword, new NullProgressMonitor());
+            fail("old password must no longer unlock the file");
+        }
+        catch (IOException expected)
+        {
+            // expected
+        }
+
+        var loadedWithNewPassword = ClientFactory.load(file, newPassword, new NullProgressMonitor());
+        assertEquals(CurrencyUnit.USD, loadedWithNewPassword.getBaseCurrency());
+        assertTrue(loadedWithNewPassword.getSaveFlags().contains(SaveFlag.BINARY));
+        assertTrue(loadedWithNewPassword.getSaveFlags().contains(SaveFlag.ENCRYPTED));
+        assertTrue(loadedWithNewPassword.getSaveFlags().contains(SaveFlag.AES256));
     }
 }
