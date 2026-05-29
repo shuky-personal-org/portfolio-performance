@@ -72,6 +72,20 @@ public class PortfolioFileServiceTest
         throw new AssertionError("Deleted portfolio file should not be discoverable by its original ID");
     }
 
+    @Test
+    public void resolvesPortfolioFilePathForDownload() throws Exception
+    {
+        var root = folder.getRoot().toPath();
+        Files.writeString(root.resolve("Download.xml"), "<client/>");
+        var service = new PortfolioFileService(root.toString());
+        var sourceFile = service.listPortfolioFiles().get(0);
+
+        var path = service.getPortfolioFilePath(sourceFile.getId());
+
+        assertThat(path, is(root.resolve("Download.xml")));
+        assertThat(Files.readString(path), is("<client/>"));
+    }
+
     @Test(expected = SecurityException.class)
     public void rejectsPathsOutsidePortfolioDirectory() throws Exception
     {

@@ -590,6 +590,23 @@ public class PortfolioFileService {
         return createBasicFileInfo(deletedPath.toFile(), deletedRelativePath, generateFileId(deletedRelativePath));
     }
 
+    /**
+     * Resolve an active portfolio file by ID for raw file operations.
+     * 
+     * @param fileId The ID of the portfolio file
+     * @return The resolved portfolio file path
+     * @throws IOException if the file cannot be resolved
+     */
+    public Path getPortfolioFilePath(String fileId) throws IOException {
+        String relativePath = findFileById(fileId);
+        Path path = resolveRelativePath(relativePath);
+        if (!Files.isRegularFile(path)) {
+            throw new FileNotFoundException("Portfolio file not found: " + relativePath);
+        }
+
+        return path;
+    }
+
     private Path resolveRelativePath(String relativePath) {
         if (relativePath == null || relativePath.trim().isEmpty()) {
             throw new IllegalArgumentException("File path cannot be null or empty");

@@ -3,6 +3,7 @@ package name.abuchen.portfolio.ui.api.controller;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -195,6 +196,47 @@ public class PortfolioController extends BaseController {
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
                 "Failed to remove portfolio: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Download a portfolio file.
+     * 
+     * @param portfolioId The portfolio ID
+     * @return Raw portfolio file bytes
+     */
+    @GET
+    @Path("/{portfolioId}/download")
+    @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    public Response downloadPortfolio(@PathParam("portfolioId") String portfolioId) {
+        try {
+            logger.info("Downloading portfolio file: {}", portfolioId);
+
+            Path filePath = portfolioFileService.getPortfolioFilePath(portfolioId);
+            String filename = sanitizeAttachmentFilename(filePath.getFileName().toString());
+
+            return Response.ok(filePath.toFile(), MediaType.APPLICATION_OCTET_STREAM)
+                            .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                            .header("X-Content-Type-Options", "nosniff")
+                            .build();
+
+        } catch (FileNotFoundException e) {
+            logger.warn("Portfolio not found for download: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "PORTFOLIO_NOT_FOUND",
+                e.getMessage());
+
+        } catch (IllegalArgumentException | SecurityException e) {
+            logger.warn("Invalid portfolio download request: {}", e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "INVALID_REQUEST",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.error("Failed to download portfolio: {}", portfolioId, e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to download portfolio: " + e.getMessage());
         }
     }
     
@@ -651,6 +693,10 @@ public class PortfolioController extends BaseController {
         }
 
         return null;
+    }
+
+    private String sanitizeAttachmentFilename(String filename) {
+        return filename.replace("\\", "\\\\").replace("\"", "\\\"");
     }
     
     /**
