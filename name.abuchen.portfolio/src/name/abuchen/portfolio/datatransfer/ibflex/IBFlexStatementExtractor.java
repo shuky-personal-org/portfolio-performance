@@ -527,11 +527,13 @@ public class IBFlexStatementExtractor implements Extractor
             portfolioTransfer.setType(isOutbound ? PortfolioTransaction.Type.DELIVERY_OUTBOUND
                             : PortfolioTransaction.Type.DELIVERY_INBOUND);
             portfolioTransfer.setDateTime(extractTransferDate(element));
-            portfolioTransfer.setCurrencyCode(asCurrencyCode(element.getAttribute("currency")));
-            portfolioTransfer.setAmount(Math.abs(asAmountOrZero(element.getAttribute("positionAmount"))));
             portfolioTransfer.setShares(shares);
             portfolioTransfer.setSecurity(this.getOrCreateSecurity(element, true));
             portfolioTransfer.setNote(extractTransferNote(element, isOutbound));
+
+            Money amount = Money.of(asCurrencyCode(element.getAttribute("currency")),
+                            Math.abs(asAmountOrZero(element.getAttribute("positionAmount"))));
+            setAmount(element, portfolioTransfer, amount);
 
             results.add(new TransactionItem(portfolioTransfer));
         }
@@ -1121,26 +1123,19 @@ public class IBFlexStatementExtractor implements Extractor
                 quoteFeed = YahooFinanceQuoteFeed.ID;
             }
 
-            Security matchingSecurity = null;
-
             for (Security security : allSecurities)
             {
                 // Find security with same CONID or ISIN & currency or yahooSymbol
                 if (conid != null && conid.length() > 0 && conid.equals(security.getWkn()))
                     return security;
 
-                if (!isin.isEmpty() && isin.equals(security.getIsin()))
-                    if (currency.equals(security.getCurrencyCode()))
-                        return security;
-                    else
-                        matchingSecurity = security;
+                if (!isin.isEmpty() && isin.equals(security.getIsin())
+                                && currency.equals(security.getCurrencyCode()))
+                    return security;
 
                 if (computedTickerSymbol.isPresent() && computedTickerSymbol.get().equals(security.getTickerSymbol()))
                     return security;
             }
-
-            if (matchingSecurity != null)
-                return matchingSecurity;
 
             if (!doCreate)
                 return null;

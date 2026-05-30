@@ -3416,4 +3416,48 @@ public class IBFlexStatementExtractorTest
         assertThat(portfolioTransfer.getNote(),
                         is("INTERNAL transfer from U19253415 to U25885452 | Transaction-ID: 6007296420"));
     }
+
+    @Test
+    public void testIBFlexStatementFile27() throws IOException
+    {
+        var extractor = new IBFlexStatementExtractor(new Client());
+
+        var activityStatement = getClass().getResourceAsStream("testIBFlexStatementFile27.xml");
+        var tempFile = createTempFile(activityStatement);
+
+        var errors = new ArrayList<Exception>();
+
+        var results = extractor.extract(Collections.singletonList(tempFile), errors);
+
+        assertThat(errors, empty());
+        assertThat(countSecurities(results), is(2L));
+        assertThat(countBuySell(results), is(0L));
+        assertThat(countAccountTransactions(results), is(2L));
+        assertThat(results.size(), is(4));
+        new AssertImportActions().check(results, "USD", "EUR");
+
+        var portfolioTransfers = results.stream().filter(TransactionItem.class::isInstance)
+                        .map(Item::getSubject).filter(PortfolioTransaction.class::isInstance)
+                        .map(PortfolioTransaction.class::cast).collect(Collectors.toList());
+
+        assertThat(portfolioTransfers.size(), is(2));
+
+        var eurTransfer = portfolioTransfers.stream()
+                        .filter(t -> CurrencyUnit.EUR.equals(t.getCurrencyCode())).findFirst()
+                        .orElseThrow(IllegalArgumentException::new);
+        assertThat(eurTransfer.getType(), is(PortfolioTransaction.Type.DELIVERY_INBOUND));
+        assertThat(eurTransfer.getSecurity().getCurrencyCode(), is(CurrencyUnit.EUR));
+        assertThat(eurTransfer.getSecurity().getWkn(), is("128884495"));
+        assertThat(eurTransfer.getMonetaryAmount(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(36714.56))));
+
+        var usdTransfer = portfolioTransfers.stream()
+                        .filter(t -> CurrencyUnit.USD.equals(t.getCurrencyCode())).findFirst()
+                        .orElseThrow(IllegalArgumentException::new);
+        assertThat(usdTransfer.getType(), is(PortfolioTransaction.Type.DELIVERY_INBOUND));
+        assertThat(usdTransfer.getSecurity().getCurrencyCode(), is(CurrencyUnit.USD));
+        assertThat(usdTransfer.getSecurity().getWkn(), is("107968733"));
+        assertThat(usdTransfer.getMonetaryAmount(),
+                        is(Money.of(CurrencyUnit.USD, Values.Amount.factorize(234848.04))));
+    }
 }
