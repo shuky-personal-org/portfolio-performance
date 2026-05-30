@@ -49,8 +49,30 @@ public final class TransactionManagementService
         requireRequest(request);
 
         findTransactionPair(client, transactionUuid);
+        validateTransactionRequest(client, request);
         deleteTransaction(client, transactionUuid);
         return createTransaction(client, request);
+    }
+
+    private static void validateTransactionRequest(Client client, TransactionMutationDto request)
+    {
+        var type = parseType(request.getType());
+        SecurityManagementService.findSecurity(client, requireUuid(request.getSecurityUuid(), "Security UUID"));
+        var portfolio = findSecurityAccount(client, requireUuid(request.getSecurityAccountUuid(), "Security account UUID"));
+        requirePositive(request.getShares(), "Shares");
+        requirePositive(request.getAmount(), "Amount");
+
+        if (type == PortfolioTransaction.Type.BUY || type == PortfolioTransaction.Type.SELL)
+        {
+            var account = resolveAccount(client, portfolio, request.getAccountUuid());
+            resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
+        }
+        else
+        {
+            if (portfolio.getReferenceAccount() == null)
+                throw new IllegalArgumentException("Security account must have a reference cash account");
+            resolveCurrencyCode(request.getCurrencyCode(), portfolio.getReferenceAccount().getCurrencyCode());
+        }
     }
 
     public static TransactionPair<?> deleteTransaction(Client client, String transactionUuid)
@@ -148,10 +170,19 @@ public final class TransactionManagementService
 
         try
         {
-            return PortfolioTransaction.Type.valueOf(type.trim().toUpperCase());
+            var parsedType = PortfolioTransaction.Type.valueOf(type.trim().toUpperCase());
+            if (parsedType == PortfolioTransaction.Type.TRANSFER_IN
+                            || parsedType == PortfolioTransaction.Type.TRANSFER_OUT)
+            {
+                throw new IllegalArgumentException(
+                                "Transfer transactions are not supported via this API. Use BUY, SELL, DELIVERY_INBOUND, or DELIVERY_OUTBOUND.");
+            }
+            return parsedType;
         }
         catch (IllegalArgumentException e)
         {
+            if (e.getMessage() != null && e.getMessage().startsWith("Transfer transactions"))
+                throw e;
             throw new IllegalArgumentException("Unsupported transaction type: " + type);
         }
     }

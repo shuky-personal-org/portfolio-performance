@@ -43,7 +43,7 @@ public class TransactionManagementServiceTest
         var portfolioTransaction = (PortfolioTransaction) pair.getTransaction();
 
         assertThat(portfolioTransaction.getType(), is(PortfolioTransaction.Type.BUY));
-        assertThat(portfolioTransaction.getShares(), is(10_000_000L));
+        assertThat(portfolioTransaction.getShares(), is(1_000_000_000L));
         assertThat(account.getTransactions().size(), is(1));
         assertThat(portfolio.getTransactions().size(), is(1));
         assertThat(account.getTransactions().get(0).getCrossEntry(), is(portfolio.getTransactions().get(0).getCrossEntry()));
