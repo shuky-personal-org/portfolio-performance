@@ -38,19 +38,6 @@ public final class SystemDashboard
         return DashboardConverter.toDto(DASHBOARD);
     }
 
-    public static Dashboard.Widget getWidget(int columnIndex, int widgetIndex)
-    {
-        List<Dashboard.Column> columns = DASHBOARD.getColumns();
-        if (columnIndex < 0 || columnIndex >= columns.size())
-            return null;
-
-        List<Dashboard.Widget> widgets = columns.get(columnIndex).getWidgets();
-        if (widgetIndex < 0 || widgetIndex >= widgets.size())
-            return null;
-
-        return widgets.get(widgetIndex);
-    }
-
     private static Dashboard buildDashboard()
     {
         Dashboard dashboard = new Dashboard(ID);

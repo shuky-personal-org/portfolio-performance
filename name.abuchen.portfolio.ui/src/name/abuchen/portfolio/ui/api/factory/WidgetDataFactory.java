@@ -473,7 +473,7 @@ public enum WidgetDataFactory {
     REBALANCING_CHART(Messages.RebalancingChartActualVsTarget, Messages.LabelStatementOfAssets, 
                     (widget, data) -> new RebalancingChartWidgetData(widget, data)),
     
-    VERTICAL_SPACER(Messages.LabelVerticalSpacer, Messages.LabelCommon, (widget, data) -> createEmptyWidgetData(widget.getId(), "vertical_spacer")),
+    VERTICAL_SPACEER(Messages.LabelVerticalSpacer, Messages.LabelCommon, (widget, data) -> createEmptyWidgetData(widget.getId(), "vertical_spacer")),
     
     ALL_TIME_HIGH(Messages.LabelAllTimeHigh, Messages.LabelStatementOfAssets, //
                     (widget, data) -> IndicatorWidgetData.<Money>create(widget, data) //
