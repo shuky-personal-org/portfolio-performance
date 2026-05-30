@@ -82,10 +82,10 @@ public final class FlexReportsDirectory
     }
 
     /**
-     * @return path suitable for SWT {@code FileDialog#setFilterPath}, or empty when unset
+     * @return path suitable for SWT {@code FileDialog#setFilterPath}, or empty when unset or missing
      */
     public static Optional<String> defaultFileDialogPath()
     {
-        return resolveConfigured().map(Path::toString);
+        return resolve().map(Path::toString);
     }
 }
