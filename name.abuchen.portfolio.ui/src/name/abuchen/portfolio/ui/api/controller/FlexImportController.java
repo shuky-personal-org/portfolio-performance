@@ -1,6 +1,7 @@
 package name.abuchen.portfolio.ui.api.controller;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -8,9 +9,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
@@ -73,6 +76,72 @@ public class FlexImportController extends BaseController
         }
         
         return path;
+    }
+
+    private Response resolveFlexReportFile(String filePathValue)
+    {
+        if (filePathValue == null || filePathValue.isEmpty())
+        {
+            return createErrorResponse(Response.Status.BAD_REQUEST, "MISSING_FILE",
+                            "filePath is required");
+        }
+
+        try
+        {
+            Path flexReportsDir = getFlexReportsDirectory();
+            logger.debug("Resolving Flex report file path: {} (base directory: {})", filePathValue, flexReportsDir);
+            Path resolvedPath = flexReportsDir.resolve(filePathValue).normalize();
+            if (!resolvedPath.startsWith(flexReportsDir))
+            {
+                logger.warn("File path outside Flex reports directory: {} (resolved: {})", filePathValue, resolvedPath);
+                return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
+                                "File path outside Flex reports directory: " + filePathValue);
+            }
+            if (!Files.exists(resolvedPath))
+            {
+                logger.warn("Flex report file not found: {} (resolved: {})", filePathValue, resolvedPath);
+                return createErrorResponse(Response.Status.NOT_FOUND, "FILE_NOT_FOUND",
+                                "File not found: " + filePathValue);
+            }
+
+            File file = resolvedPath.toFile();
+            byte[] fileBytes = Files.readAllBytes(resolvedPath);
+            String filename = sanitizeAttachmentFilename(file.getName());
+
+            return Response.ok(fileBytes, MediaType.APPLICATION_XML)
+                            .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                            .header("X-Content-Type-Options", "nosniff")
+                            .build();
+        }
+        catch (IOException e)
+        {
+            logger.error("Failed to read Flex report file: {}", filePathValue, e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
+                            "Failed to read Flex report file: " + e.getMessage());
+        }
+        catch (Exception e)
+        {
+            logger.error("Failed to resolve Flex report file path: {}", filePathValue, e);
+            return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
+                            "Failed to resolve file path: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Download an IB Flex report XML file from the shared Flex reports directory.
+     *
+     * @param portfolioId The portfolio ID (used for API scoping only)
+     * @param filePath Relative file path to the Flex report XML file
+     * @return XML attachment
+     */
+    @GET
+    @javax.ws.rs.Path("/download")
+    @Produces(MediaType.APPLICATION_XML)
+    public Response downloadFlexReport(@PathParam("portfolioId") String portfolioId,
+                    @QueryParam("filePath") String filePath)
+    {
+        logger.info("Downloading Flex report for portfolio: {}, file: {}", portfolioId, filePath);
+        return resolveFlexReportFile(filePath);
     }
 
     /**
