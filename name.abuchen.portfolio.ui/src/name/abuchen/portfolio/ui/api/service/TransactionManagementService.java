@@ -170,7 +170,7 @@ public final class TransactionManagementService
 
         try
         {
-            var parsedType = PortfolioTransaction.Type.valueOf(type.trim().toUpperCase());
+            var parsedType = PortfolioTransaction.Type.valueOf(type.trim().toUpperCase(Locale.ROOT));
             if (parsedType == PortfolioTransaction.Type.TRANSFER_IN
                             || parsedType == PortfolioTransaction.Type.TRANSFER_OUT)
             {
