@@ -50,10 +50,7 @@ public class DashboardController extends BaseController {
         try {
             logger.info("Getting all dashboards for portfolio: {}", portfolioId);
             
-            // Get the cached Client for this portfolio
-            Client client = portfolioFileService.getPortfolio(portfolioId);
-            
-            if (client == null) {
+            if (portfolioFileService.getPortfolio(portfolioId) == null) {
                 logger.warn("No cached client found for portfolio: {}", portfolioId);
                 return createPreconditionRequiredResponse(
                     "PORTFOLIO_NOT_LOADED", 
@@ -95,9 +92,7 @@ public class DashboardController extends BaseController {
         try {
             logger.info("Downloading dashboard configurations for portfolio: {}", portfolioId);
 
-            Client client = portfolioFileService.getPortfolio(portfolioId);
-
-            if (client == null) {
+            if (portfolioFileService.getPortfolio(portfolioId) == null) {
                 logger.warn("No cached client found for portfolio: {}", portfolioId);
                 return createPreconditionRequiredResponse(
                     "PORTFOLIO_NOT_LOADED",

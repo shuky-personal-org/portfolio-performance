@@ -181,7 +181,7 @@ public class TaxonomyChartWidgetData {
         if (taxonomy == null && taxonomyName != null) {
             var lowerName = taxonomyName.toLowerCase(java.util.Locale.US);
             taxonomy = dashboardData.getClient().getTaxonomies().stream()
-                    .filter(t -> t.getName().toLowerCase(java.util.Locale.US).contains(lowerName))
+                    .filter(t -> t.getName() != null && t.getName().toLowerCase(java.util.Locale.US).contains(lowerName))
                     .findFirst()
                     .orElse(null);
         }
