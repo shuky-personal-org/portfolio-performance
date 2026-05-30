@@ -64,13 +64,18 @@ public abstract class BaseController {
 
     /**
      * Sanitize a filename for use in Content-Disposition header.
-     * Escapes backslashes and double quotes to prevent header injection.
+     * Removes CRLF characters and escapes backslashes and double quotes 
+     * to prevent header injection (CWE-113).
      * 
      * @param filename The filename to sanitize
      * @return The sanitized filename safe for use in HTTP headers
      */
     protected String sanitizeAttachmentFilename(String filename) {
-        return filename.replace("\\", "\\\\").replace("\"", "\\\"");
+        return filename
+            .replace("\r", "")
+            .replace("\n", "")
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"");
     }
 }
 
