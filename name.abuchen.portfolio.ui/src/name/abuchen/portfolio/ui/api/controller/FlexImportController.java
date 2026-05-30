@@ -76,47 +76,100 @@ public class FlexImportController extends BaseController
         return path;
     }
 
-    private Response resolveFlexReportFile(String filePath)
+    /**
+     * Result of path resolution containing either a resolved path or an error response.
+     */
+    private static class PathResolutionResult
+    {
+        private final Path resolvedPath;
+        private final Response errorResponse;
+
+        private PathResolutionResult(Path resolvedPath, Response errorResponse)
+        {
+            this.resolvedPath = resolvedPath;
+            this.errorResponse = errorResponse;
+        }
+
+        static PathResolutionResult success(Path path)
+        {
+            return new PathResolutionResult(path, null);
+        }
+
+        static PathResolutionResult error(Response response)
+        {
+            return new PathResolutionResult(null, response);
+        }
+
+        boolean isSuccess()
+        {
+            return resolvedPath != null;
+        }
+
+        Path getResolvedPath()
+        {
+            return resolvedPath;
+        }
+
+        Response getErrorResponse()
+        {
+            return errorResponse;
+        }
+    }
+
+    /**
+     * Resolves and validates a file path relative to the Flex reports directory.
+     * 
+     * @param filePath The relative file path to resolve
+     * @param operation The operation name for logging purposes
+     * @return PathResolutionResult containing either the resolved path or an error response
+     */
+    private PathResolutionResult resolveAndValidateFilePath(String filePath, String operation)
     {
         if (filePath == null || filePath.isEmpty())
         {
-            return createErrorResponse(Response.Status.BAD_REQUEST, "MISSING_FILE",
-                            "filePath is required");
+            return PathResolutionResult.error(createErrorResponse(Response.Status.BAD_REQUEST, "MISSING_FILE",
+                            "filePath is required"));
         }
 
         try
         {
-            Path flexReportsDir = getFlexReportsDirectory();
-            logger.debug("Resolving Flex report file path for download: {} (base directory: {})", filePath,
+            Path flexReportsDir = getFlexReportsDirectory().normalize();
+            logger.debug("Resolving Flex report file path for {}: {} (base directory: {})", operation, filePath,
                             flexReportsDir);
             Path resolvedPath = flexReportsDir.resolve(filePath).normalize();
             if (!resolvedPath.startsWith(flexReportsDir))
             {
                 logger.warn("File path outside Flex reports directory: {} (resolved: {})", filePath, resolvedPath);
-                return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
-                                "File path outside Flex reports directory: " + filePath);
+                return PathResolutionResult.error(createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
+                                "File path outside Flex reports directory: " + filePath));
             }
             if (!Files.exists(resolvedPath))
             {
                 logger.warn("Flex report file not found: {} (resolved: {})", filePath, resolvedPath);
-                return createErrorResponse(Response.Status.NOT_FOUND, "FILE_NOT_FOUND",
-                                "File not found: " + filePath);
+                return PathResolutionResult.error(createErrorResponse(Response.Status.NOT_FOUND, "FILE_NOT_FOUND",
+                                "File not found: " + filePath));
             }
-
-            File file = resolvedPath.toFile();
-            String filename = sanitizeAttachmentFilename(resolvedPath.getFileName().toString());
-
-            return Response.ok(file, MediaType.APPLICATION_XML)
-                            .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
-                            .header("X-Content-Type-Options", "nosniff")
-                            .build();
+            logger.info("Flex report file resolved successfully for {}: {} (size: {} bytes)", operation, resolvedPath,
+                            resolvedPath.toFile().length());
+            return PathResolutionResult.success(resolvedPath);
         }
         catch (Exception e)
         {
-            logger.error("Failed to resolve Flex report file path for download: {}", filePath, e);
-            return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
-                            "Failed to resolve file path: " + e.getMessage());
+            logger.error("Failed to resolve Flex report file path for {}: {}", operation, filePath, e);
+            return PathResolutionResult.error(createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
+                            "Failed to resolve file path: " + e.getMessage()));
         }
+    }
+
+    private Response buildDownloadResponse(Path resolvedPath)
+    {
+        File file = resolvedPath.toFile();
+        String filename = sanitizeAttachmentFilename(resolvedPath.getFileName().toString());
+
+        return Response.ok(file, MediaType.APPLICATION_XML)
+                        .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                        .header("X-Content-Type-Options", "nosniff")
+                        .build();
     }
 
     /**
@@ -128,12 +181,17 @@ public class FlexImportController extends BaseController
      */
     @GET
     @javax.ws.rs.Path("/reports/{filePath: .*}/download")
-    @Produces({ MediaType.APPLICATION_XML, MediaType.APPLICATION_OCTET_STREAM })
+    @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML, MediaType.APPLICATION_OCTET_STREAM })
     public Response downloadFlexReport(@PathParam("portfolioId") String portfolioId,
                     @PathParam("filePath") String filePath)
     {
         logger.info("Downloading Flex report for portfolio: {}, file: {}", portfolioId, filePath);
-        return resolveFlexReportFile(filePath);
+        PathResolutionResult result = resolveAndValidateFilePath(filePath, "download");
+        if (!result.isSuccess())
+        {
+            return result.getErrorResponse();
+        }
+        return buildDownloadResponse(result.getResolvedPath());
     }
 
     /**
@@ -200,33 +258,12 @@ public class FlexImportController extends BaseController
                             request.isConvertBuySellToDelivery(), request.isRemoveDividends(), request.isImportNotes());
 
             // Resolve file path relative to Flex reports directory
-            File file;
-            try
+            PathResolutionResult pathResult = resolveAndValidateFilePath(request.getFilePath(), "import");
+            if (!pathResult.isSuccess())
             {
-                Path flexReportsDir = getFlexReportsDirectory();
-                logger.debug("Resolving Flex report file path: {} (base directory: {})", request.getFilePath(), flexReportsDir);
-                Path resolvedPath = flexReportsDir.resolve(request.getFilePath()).normalize();
-                if (!resolvedPath.startsWith(flexReportsDir))
-                {
-                    logger.warn("File path outside Flex reports directory: {} (resolved: {})", request.getFilePath(), resolvedPath);
-                    return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
-                                    "File path outside Flex reports directory: " + request.getFilePath());
-                }
-                if (!Files.exists(resolvedPath))
-                {
-                    logger.warn("Flex report file not found: {} (resolved: {})", request.getFilePath(), resolvedPath);
-                    return createErrorResponse(Response.Status.BAD_REQUEST, "FILE_NOT_FOUND",
-                                    "File not found: " + request.getFilePath());
-                }
-                file = resolvedPath.toFile();
-                logger.info("Flex report file resolved successfully: {} (size: {} bytes)", resolvedPath, file.length());
+                return pathResult.getErrorResponse();
             }
-            catch (Exception e)
-            {
-                logger.error("Failed to resolve Flex report file path: {}", request.getFilePath(), e);
-                return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
-                                "Failed to resolve file path: " + e.getMessage());
-            }
+            File file = pathResult.getResolvedPath().toFile();
 
             // Prepare account mappings (default empty map for secondary if not provided)
             Map<String, String> currencyAccountMap = request.getCurrencyAccountMap() != null
@@ -347,33 +384,12 @@ public class FlexImportController extends BaseController
             }
 
             // Resolve file path relative to Flex reports directory
-            File file;
-            try
+            PathResolutionResult pathResult = resolveAndValidateFilePath(request.getFilePath(), "preview");
+            if (!pathResult.isSuccess())
             {
-                Path flexReportsDir = getFlexReportsDirectory();
-                logger.debug("Resolving Flex report file path for preview: {} (base directory: {})", request.getFilePath(), flexReportsDir);
-                Path resolvedPath = flexReportsDir.resolve(request.getFilePath()).normalize();
-                if (!resolvedPath.startsWith(flexReportsDir))
-                {
-                    logger.warn("File path outside Flex reports directory: {} (resolved: {})", request.getFilePath(), resolvedPath);
-                    return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
-                                    "File path outside Flex reports directory: " + request.getFilePath());
-                }
-                if (!Files.exists(resolvedPath))
-                {
-                    logger.warn("Flex report file not found: {} (resolved: {})", request.getFilePath(), resolvedPath);
-                    return createErrorResponse(Response.Status.BAD_REQUEST, "FILE_NOT_FOUND",
-                                    "File not found: " + request.getFilePath());
-                }
-                file = resolvedPath.toFile();
-                logger.info("Flex report file resolved successfully for preview: {} (size: {} bytes)", resolvedPath, file.length());
+                return pathResult.getErrorResponse();
             }
-            catch (Exception e)
-            {
-                logger.error("Failed to resolve Flex report file path: {}", request.getFilePath(), e);
-                return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_PATH",
-                                "Failed to resolve file path: " + e.getMessage());
-            }
+            File file = pathResult.getResolvedPath().toFile();
 
             // Prepare account mappings (default empty map for secondary if not provided)
             Map<String, String> currencyAccountMap = request.getCurrencyAccountMap() != null
