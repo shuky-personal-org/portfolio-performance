@@ -130,17 +130,26 @@ public class FlexImportController extends BaseController
     /**
      * Download an IB Flex report XML file from the shared Flex reports directory.
      *
-     * @param portfolioId The portfolio ID (used for API scoping only)
+     * @param portfolioId The portfolio ID (used to verify portfolio is loaded)
      * @param filePath Relative file path to the Flex report XML file
      * @return XML attachment
      */
     @GET
     @javax.ws.rs.Path("/download")
-    @Produces(MediaType.APPLICATION_XML)
+    @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
     public Response downloadFlexReport(@PathParam("portfolioId") String portfolioId,
                     @QueryParam("filePath") String filePath)
     {
         logger.info("Downloading Flex report for portfolio: {}, file: {}", portfolioId, filePath);
+
+        Client client = portfolioFileService.getPortfolio(portfolioId);
+        if (client == null)
+        {
+            logger.warn("Portfolio not found or not opened: {}", portfolioId);
+            return createPreconditionRequiredResponse("PORTFOLIO_NOT_FOUND",
+                            "Portfolio not found or not opened: " + portfolioId);
+        }
+
         return resolveFlexReportFile(filePath);
     }
 
