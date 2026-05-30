@@ -59,15 +59,16 @@ public final class SystemDashboard
             widget("CHART", "Performance vs S&P500", //$NON-NLS-1$ //$NON-NLS-2$
                 Map.of("HEIGHT", "420", "SHOW_Y_AXIS", "true")), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             widget("TAXONOMY_CHART", "Asset Class", //$NON-NLS-1$ //$NON-NLS-2$
-                Map.of("FLAG_INCLUDE_SECURITIES", "false")), //$NON-NLS-1$ //$NON-NLS-2$
+                Map.of("FLAG_INCLUDE_SECURITIES", "false", "TAXONOMY_NAME", "Asset")), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
             widget("TAXONOMY_CHART", "Currency", //$NON-NLS-1$ //$NON-NLS-2$
-                Map.of("FLAG_INCLUDE_SECURITIES", "false")) //$NON-NLS-1$ //$NON-NLS-2$
+                Map.of("FLAG_INCLUDE_SECURITIES", "false", "TAXONOMY_NAME", "Currency")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
         ));
 
         columns.add(buildColumn(
             widget("ASSET_CHART", "Statement of Assets - Chart"), //$NON-NLS-1$ //$NON-NLS-2$
             widget("REBALANCING_CHART", "Actual vs. Target Allocation"), //$NON-NLS-1$ //$NON-NLS-2$
-            widget("ASSET_CHART", "Earnings") //$NON-NLS-1$ //$NON-NLS-2$
+            widget("ASSET_CHART", "Earnings", //$NON-NLS-1$ //$NON-NLS-2$
+                Map.of("DATA_SERIES", "Client-earnings_accumulated")) //$NON-NLS-1$ //$NON-NLS-2$
         ));
 
         dashboard.setColumns(columns);

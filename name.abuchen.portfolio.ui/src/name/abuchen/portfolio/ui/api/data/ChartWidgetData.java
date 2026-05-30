@@ -283,6 +283,11 @@ public class ChartWidgetData {
     }
     
     private String getChartConfigData() {
+        String directDataSeries = (config != null) ? config.get("DATA_SERIES") : null;
+        if (directDataSeries != null && !directDataSeries.isEmpty()) {
+            return directDataSeries;
+        }
+        
         String configName = (useCase == DataSeries.UseCase.STATEMENT_OF_ASSETS 
                 ? StatementOfAssetsHistoryView.class 
                 : PerformanceChartView.class).getSimpleName() + BasicDataSeriesConfigurator.IDENTIFIER_POSTFIX;
