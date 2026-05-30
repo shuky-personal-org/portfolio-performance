@@ -171,21 +171,24 @@ public final class SecurityManagementService
             return;
 
         security.setFeed(requireValidFeedId(request.getFeed()));
-        security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
 
-        if (request.getLatestFeed() != null && request.getLatestFeed().isBlank())
+        if (request.getFeedURL() != null)
+            security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
+
+        if (request.getLatestFeed() != null)
         {
-            security.setLatestFeed(null);
-            security.setLatestFeedURL(null);
-            return;
+            if (request.getLatestFeed().isBlank())
+            {
+                security.setLatestFeed(null);
+                security.setLatestFeedURL(null);
+            }
+            else
+            {
+                security.setLatestFeed(requireValidFeedId(request.getLatestFeed()));
+                if (request.getLatestFeedURL() != null)
+                    security.setLatestFeedURL(normalizeOptionalString(request.getLatestFeedURL()));
+            }
         }
-
-        var normalizedLatestFeed = normalizeOptionalString(request.getLatestFeed());
-        var validatedLatestFeed = normalizedLatestFeed != null ? requireValidFeedId(normalizedLatestFeed) : null;
-        security.setLatestFeed(validatedLatestFeed);
-        security.setLatestFeedURL(validatedLatestFeed != null
-                        ? normalizeOptionalString(request.getLatestFeedURL())
-                        : null);
     }
 
     private static void applyOptionalFields(Security security, SecurityMutationDto request, boolean isCreate)
