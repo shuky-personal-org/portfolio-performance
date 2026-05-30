@@ -237,8 +237,22 @@ public class PortfolioFileService {
             return;
         }
 
-        try {
-            String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+        // Only attempt to read XML files - binary .portfolio files are compressed
+        // and cannot be read as text
+        String fileName = file.getName().toLowerCase();
+        if (!fileName.endsWith(XML_EXTENSION)) {
+            return;
+        }
+
+        // Read only the first few KB to find the baseCurrency tag near the header
+        int bufferSize = 4096;
+        try (var reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
+            char[] buffer = new char[bufferSize];
+            int charsRead = reader.read(buffer, 0, bufferSize);
+            if (charsRead <= 0)
+                return;
+
+            String content = new String(buffer, 0, charsRead);
             String openTag = "<baseCurrency>";
             int start = content.indexOf(openTag);
             if (start < 0)
@@ -658,11 +672,18 @@ public class PortfolioFileService {
             client = loadClient(file, fileId, relativePath, password);
         }
 
-        boolean changed = !normalizedCurrency.equals(client.getBaseCurrency());
+        String oldCurrency = client.getBaseCurrency();
+        boolean changed = !normalizedCurrency.equals(oldCurrency);
         if (changed) {
             client.setBaseCurrency(normalizedCurrency);
             client.markDirty();
-            saveFile(fileId);
+            try {
+                saveFile(fileId);
+            } catch (IOException e) {
+                // Restore old currency to keep cache consistent with file on disk
+                client.setBaseCurrency(oldCurrency);
+                throw e;
+            }
             logger.info("Updated base currency for portfolio {} to {}", fileId, normalizedCurrency);
         } else {
             logger.info("Base currency for portfolio {} already set to {}", fileId, normalizedCurrency);
