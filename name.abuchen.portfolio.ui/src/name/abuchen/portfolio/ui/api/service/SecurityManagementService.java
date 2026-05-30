@@ -133,16 +133,18 @@ public final class SecurityManagementService
 
     private static void applyPriceUpdates(Security security, SecurityPriceUpdatesDto request)
     {
-        security.setFeed(requireValidFeedId(request.getFeed()));
-        security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
+        var validatedFeed = requireValidFeedId(request.getFeed());
+        var normalizedFeedURL = normalizeOptionalString(request.getFeedURL());
+        var normalizedLatestFeed = normalizeOptionalString(request.getLatestFeed());
+        var validatedLatestFeed = normalizedLatestFeed != null ? requireValidFeedId(normalizedLatestFeed) : null;
+        var normalizedLatestFeedURL = normalizedLatestFeed != null
+                        ? normalizeOptionalString(request.getLatestFeedURL())
+                        : null;
 
-        var latestFeed = normalizeOptionalString(request.getLatestFeed());
-        security.setLatestFeed(latestFeed != null ? requireValidFeedId(latestFeed) : null);
-
-        if (latestFeed == null)
-            security.setLatestFeedURL(null);
-        else
-            security.setLatestFeedURL(normalizeOptionalString(request.getLatestFeedURL()));
+        security.setFeed(validatedFeed);
+        security.setFeedURL(normalizedFeedURL);
+        security.setLatestFeed(validatedLatestFeed);
+        security.setLatestFeedURL(normalizedLatestFeedURL);
     }
 
     private static void requirePriceUpdatesRequest(SecurityPriceUpdatesDto request)
@@ -165,6 +167,17 @@ public final class SecurityManagementService
 
     private static void applyOptionalFields(Security security, SecurityMutationDto request, boolean isCreate)
     {
+        String validatedFeed = null;
+        if (request.getFeed() != null && !request.getFeed().isBlank() && !isCreate)
+            validatedFeed = requireValidFeedId(request.getFeed());
+
+        String validatedLatestFeed = null;
+        boolean clearLatestFeed = false;
+        if (request.getLatestFeed() != null && !request.getLatestFeed().isBlank())
+            validatedLatestFeed = requireValidFeedId(request.getLatestFeed());
+        else if (request.getLatestFeed() != null)
+            clearLatestFeed = true;
+
         if (request.getTargetCurrencyCode() != null)
             security.setTargetCurrencyCode(normalizeOptionalString(request.getTargetCurrencyCode()));
 
@@ -183,15 +196,15 @@ public final class SecurityManagementService
         if (request.getRetired() != null)
             security.setRetired(request.getRetired().booleanValue());
 
-        if (request.getFeed() != null && !request.getFeed().isBlank() && !isCreate)
-            security.setFeed(requireValidFeedId(request.getFeed()));
+        if (validatedFeed != null)
+            security.setFeed(validatedFeed);
 
         if (request.getFeedURL() != null)
             security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
 
-        if (request.getLatestFeed() != null && !request.getLatestFeed().isBlank())
-            security.setLatestFeed(requireValidFeedId(request.getLatestFeed()));
-        else if (request.getLatestFeed() != null)
+        if (validatedLatestFeed != null)
+            security.setLatestFeed(validatedLatestFeed);
+        else if (clearLatestFeed)
             security.setLatestFeed(null);
 
         if (request.getLatestFeedURL() != null)
