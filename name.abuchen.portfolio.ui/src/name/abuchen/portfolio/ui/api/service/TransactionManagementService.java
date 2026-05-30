@@ -165,6 +165,12 @@ public final class TransactionManagementService
     private static TransactionPair<?> updateAccountTransaction(Client client, TransactionPair<?> existing,
                     AccountTransaction transaction, TransactionMutationDto request)
     {
+        if (transaction.getCrossEntry() != null)
+        {
+            throw new IllegalArgumentException(
+                            "Transfer transactions cannot be updated via API. Delete and recreate instead.");
+        }
+
         var account = (Account) existing.getOwner();
 
         var dateTime = request.getDateTime();
@@ -206,6 +212,12 @@ public final class TransactionManagementService
     {
         var portfolio = (Portfolio) existing.getOwner();
         var crossEntry = transaction.getCrossEntry();
+
+        if (crossEntry != null && !(crossEntry instanceof BuySellEntry))
+        {
+            throw new IllegalArgumentException(
+                            "Transfer transactions cannot be updated via API. Delete and recreate instead.");
+        }
 
         if (crossEntry instanceof BuySellEntry buySellEntry)
         {
