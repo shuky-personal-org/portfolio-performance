@@ -3461,4 +3461,42 @@ public class IBFlexStatementExtractorTest
                         is(Money.of(CurrencyUnit.USD, Values.Amount.factorize(234848.04))));
         assertThat(usdTransfer.getUnit(Unit.Type.GROSS_VALUE).isPresent(), is(false));
     }
+
+    @Test
+    public void testIBFlexStatementFile28() throws IOException
+    {
+        var extractor = new IBFlexStatementExtractor(new Client());
+
+        var activityStatement = getClass().getResourceAsStream("testIBFlexStatementFile28.xml");
+        var tempFile = createTempFile(activityStatement);
+
+        var errors = new ArrayList<Exception>();
+
+        var results = extractor.extract(Collections.singletonList(tempFile), errors);
+
+        assertThat(errors, empty());
+        new AssertImportActions().check(results, "USD", "EUR");
+
+        var transfers = results.stream().filter(TransactionItem.class::isInstance)
+                        .map(i -> i.getSubject()).filter(PortfolioTransaction.class::isInstance)
+                        .map(PortfolioTransaction.class::cast).toList();
+
+        var vangSp500UsdTransfer = transfers.stream()
+                        .filter(t -> "107968733".equals(t.getSecurity().getWkn())).findFirst()
+                        .orElseThrow(IllegalArgumentException::new);
+        assertThat(vangSp500UsdTransfer.getType(), is(PortfolioTransaction.Type.DELIVERY_INBOUND));
+        assertThat(vangSp500UsdTransfer.getSecurity().getCurrencyCode(), is(CurrencyUnit.USD));
+        assertThat(vangSp500UsdTransfer.getCurrencyCode(), is(CurrencyUnit.USD));
+        assertThat(vangSp500UsdTransfer.getMonetaryAmount(),
+                        is(Money.of(CurrencyUnit.USD, Values.Amount.factorize(234848.04))));
+
+        var vangSp500EurTransfer = transfers.stream()
+                        .filter(t -> "128884495".equals(t.getSecurity().getWkn())).findFirst()
+                        .orElseThrow(IllegalArgumentException::new);
+        assertThat(vangSp500EurTransfer.getType(), is(PortfolioTransaction.Type.DELIVERY_INBOUND));
+        assertThat(vangSp500EurTransfer.getSecurity().getCurrencyCode(), is(CurrencyUnit.EUR));
+        assertThat(vangSp500EurTransfer.getCurrencyCode(), is(CurrencyUnit.EUR));
+        assertThat(vangSp500EurTransfer.getMonetaryAmount(),
+                        is(Money.of(CurrencyUnit.EUR, Values.Amount.factorize(36714.56))));
+    }
 }
