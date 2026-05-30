@@ -25,6 +25,8 @@ import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.ui.api.dto.AssignmentDto;
 import name.abuchen.portfolio.ui.api.dto.ClassificationDto;
 import name.abuchen.portfolio.ui.api.dto.TaxonomyDto;
+import name.abuchen.portfolio.ui.api.dto.TaxonomyMutationDto;
+import name.abuchen.portfolio.ui.api.service.TaxonomyManagementService;
 import name.abuchen.portfolio.ui.views.taxonomy.TaxonomyModel;
 import name.abuchen.portfolio.ui.views.taxonomy.TaxonomyNode;
 import java.time.LocalDate;
@@ -155,11 +157,52 @@ public class TaxonomiesController extends BaseController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response createTaxonomy(@PathParam("portfolioId") String portfolioId,
-                                   Map<String, Object> taxonomyData) {
-        // TODO: Implement taxonomy creation
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Taxonomy creation not yet implemented");
+                                   TaxonomyMutationDto taxonomyData) {
+        try {
+            logger.info("Creating taxonomy for portfolio {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before creating taxonomies");
+            }
+
+            name.abuchen.portfolio.model.Taxonomy taxonomy = TaxonomyManagementService.createTaxonomy(client, taxonomyData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            TaxonomyDto taxonomyDto = convertTaxonomyToDto(taxonomy, client);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("taxonomy", taxonomyDto);
+            response.put("message", "Taxonomy created successfully");
+
+            logger.info("Created taxonomy {} ({}) for portfolio {}", taxonomy.getName(), taxonomy.getId(), portfolioId);
+
+            return Response.status(Response.Status.CREATED).entity(response).build();
+
+        } catch (java.util.NoSuchElementException e) {
+            logger.warn("Invalid reference in taxonomy creation request for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid reference",
+                e.getMessage());
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid taxonomy creation request for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error creating taxonomy for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -177,11 +220,64 @@ public class TaxonomiesController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response updateTaxonomy(@PathParam("portfolioId") String portfolioId,
                                    @PathParam("taxonomyId") String taxonomyId,
-                                   Map<String, Object> taxonomyData) {
-        // TODO: Implement taxonomy update
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Taxonomy update not yet implemented");
+                                   TaxonomyMutationDto taxonomyData) {
+        try {
+            logger.info("Updating taxonomy {} for portfolio {}", taxonomyId, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before updating taxonomies");
+            }
+
+            name.abuchen.portfolio.model.Taxonomy taxonomy = TaxonomyManagementService.updateTaxonomy(client, taxonomyId, taxonomyData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            TaxonomyDto taxonomyDto = convertTaxonomyToDto(taxonomy, client);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("taxonomy", taxonomyDto);
+            response.put("message", "Taxonomy updated successfully");
+
+            logger.info("Updated taxonomy {} ({}) for portfolio {}", taxonomy.getName(), taxonomyId, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (java.util.NoSuchElementException e) {
+            String message = e.getMessage();
+            // Check specifically for "Taxonomy ... not found" to distinguish from validation
+            // errors like "Taxonomy ID is required" which should be 400 Bad Request
+            if (message != null && message.startsWith("Taxonomy") && message.contains("not found")) {
+                logger.warn("Taxonomy not found: {} in portfolio: {}", taxonomyId, portfolioId);
+                return createErrorResponse(Response.Status.NOT_FOUND,
+                    "Taxonomy not found",
+                    e.getMessage());
+            } else {
+                logger.warn("Invalid reference in taxonomy update request for taxonomy {} in portfolio {}: {}",
+                    taxonomyId, portfolioId, e.getMessage());
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "Invalid reference",
+                    e.getMessage());
+            }
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid taxonomy update request for taxonomy {} in portfolio {}: {}",
+                taxonomyId, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error updating taxonomy {} for portfolio {}: {}",
+                taxonomyId, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -197,10 +293,45 @@ public class TaxonomiesController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteTaxonomy(@PathParam("portfolioId") String portfolioId,
                                    @PathParam("taxonomyId") String taxonomyId) {
-        // TODO: Implement taxonomy deletion
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Taxonomy deletion not yet implemented");
+        try {
+            logger.info("Deleting taxonomy {} for portfolio {}", taxonomyId, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before deleting taxonomies");
+            }
+
+            name.abuchen.portfolio.model.Taxonomy taxonomy = TaxonomyManagementService.deleteTaxonomy(client, taxonomyId);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("taxonomyId", taxonomyId);
+            response.put("taxonomyName", taxonomy.getName());
+            response.put("message", "Taxonomy deleted successfully");
+
+            logger.info("Deleted taxonomy {} ({}) for portfolio {}", taxonomy.getName(), taxonomyId, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (java.util.NoSuchElementException e) {
+            logger.warn("Taxonomy not found: {} in portfolio: {}", taxonomyId, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Taxonomy not found",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error deleting taxonomy {} for portfolio {}: {}",
+                taxonomyId, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
