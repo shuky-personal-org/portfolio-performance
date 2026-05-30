@@ -53,6 +53,8 @@ public class SecurityManagementServiceTest
         request.setIsin("US0378331005");
         request.setNote("");
         request.setRetired(Boolean.TRUE);
+        request.setFeed(QuoteFeed.MANUAL);
+        request.setFeedURL("https://example.com/historical");
 
         var updated = SecurityManagementService.updateSecurity(client, security.getUUID(), request);
 
@@ -62,6 +64,8 @@ public class SecurityManagementServiceTest
         assertThat(security.getIsin(), is("US0378331005"));
         assertThat(security.getNote(), nullValue());
         assertThat(security.isRetired(), is(true));
+        assertThat(security.getFeed(), is(QuoteFeed.MANUAL));
+        assertThat(security.getFeedURL(), is("https://example.com/historical"));
     }
 
     @Test

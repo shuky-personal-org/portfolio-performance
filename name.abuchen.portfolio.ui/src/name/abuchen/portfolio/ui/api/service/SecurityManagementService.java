@@ -45,9 +45,8 @@ public final class SecurityManagementService
         security.setName(requireName(request.getName()));
         security.setCurrencyCode(resolveCurrencyCode(request.getCurrencyCode(), client.getBaseCurrency()));
         applyOptionalFields(security, request, true);
-        security.setFeed(request.getFeed() != null && !request.getFeed().isBlank()
-                        ? requireValidFeedId(request.getFeed())
-                        : QuoteFeed.MANUAL);
+        security.setFeed(QuoteFeed.MANUAL);
+        applyFeedFieldsFromMutation(security, request);
 
         client.addSecurity(security);
         return security;
@@ -75,6 +74,7 @@ public final class SecurityManagementService
             security.setCurrencyCode(currencyCode);
 
         applyOptionalFields(security, request, false);
+        applyFeedFieldsFromMutation(security, request);
 
         return security;
     }
@@ -165,19 +165,31 @@ public final class SecurityManagementService
         throw new IllegalArgumentException("Unsupported quote feed: " + normalizedFeedId);
     }
 
+    private static void applyFeedFieldsFromMutation(Security security, SecurityMutationDto request)
+    {
+        if (request.getFeed() == null || request.getFeed().isBlank())
+            return;
+
+        security.setFeed(requireValidFeedId(request.getFeed()));
+        security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
+
+        if (request.getLatestFeed() != null && request.getLatestFeed().isBlank())
+        {
+            security.setLatestFeed(null);
+            security.setLatestFeedURL(null);
+            return;
+        }
+
+        var normalizedLatestFeed = normalizeOptionalString(request.getLatestFeed());
+        var validatedLatestFeed = normalizedLatestFeed != null ? requireValidFeedId(normalizedLatestFeed) : null;
+        security.setLatestFeed(validatedLatestFeed);
+        security.setLatestFeedURL(validatedLatestFeed != null
+                        ? normalizeOptionalString(request.getLatestFeedURL())
+                        : null);
+    }
+
     private static void applyOptionalFields(Security security, SecurityMutationDto request, boolean isCreate)
     {
-        String validatedFeed = null;
-        if (request.getFeed() != null && !request.getFeed().isBlank() && !isCreate)
-            validatedFeed = requireValidFeedId(request.getFeed());
-
-        String validatedLatestFeed = null;
-        boolean clearLatestFeed = false;
-        if (request.getLatestFeed() != null && !request.getLatestFeed().isBlank())
-            validatedLatestFeed = requireValidFeedId(request.getLatestFeed());
-        else if (request.getLatestFeed() != null)
-            clearLatestFeed = true;
-
         if (request.getTargetCurrencyCode() != null)
             security.setTargetCurrencyCode(normalizeOptionalString(request.getTargetCurrencyCode()));
 
@@ -195,20 +207,6 @@ public final class SecurityManagementService
 
         if (request.getRetired() != null)
             security.setRetired(request.getRetired().booleanValue());
-
-        if (validatedFeed != null)
-            security.setFeed(validatedFeed);
-
-        if (request.getFeedURL() != null)
-            security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
-
-        if (validatedLatestFeed != null)
-            security.setLatestFeed(validatedLatestFeed);
-        else if (clearLatestFeed)
-            security.setLatestFeed(null);
-
-        if (request.getLatestFeedURL() != null)
-            security.setLatestFeedURL(normalizeOptionalString(request.getLatestFeedURL()));
     }
 
     private static void requireRequest(SecurityMutationDto request)
