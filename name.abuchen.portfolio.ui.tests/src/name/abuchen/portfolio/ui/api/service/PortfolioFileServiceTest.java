@@ -133,4 +133,29 @@ public class PortfolioFileServiceTest
 
         service.createPortfolioFile("deleted/restore-me.portfolio");
     }
+
+    @Test
+    public void updatesBaseCurrencyAndPersistsChange() throws Exception
+    {
+        var service = new PortfolioFileService(folder.getRoot().getAbsolutePath());
+        var fileInfo = service.createPortfolioFile("CurrencyTest");
+
+        assertThat(fileInfo.getBaseCurrency(), is("EUR"));
+
+        var updated = service.updateBaseCurrency(fileInfo.getId(), "USD", null);
+        assertThat(updated.getBaseCurrency(), is("USD"));
+
+        service.clearCache();
+        var reloaded = service.updateBaseCurrency(fileInfo.getId(), "USD", null);
+        assertThat(reloaded.getBaseCurrency(), is("USD"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsUnsupportedBaseCurrencyCode() throws Exception
+    {
+        var service = new PortfolioFileService(folder.getRoot().getAbsolutePath());
+        var fileInfo = service.createPortfolioFile("InvalidCurrency");
+
+        service.updateBaseCurrency(fileInfo.getId(), "NOTACURRENCY", null);
+    }
 }

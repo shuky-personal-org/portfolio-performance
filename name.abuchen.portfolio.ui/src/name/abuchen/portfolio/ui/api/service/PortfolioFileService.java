@@ -34,6 +34,7 @@ import name.abuchen.portfolio.model.ConfigurationSet.WellKnownConfigurationSets;
 import name.abuchen.portfolio.model.SaveFlag;
 import name.abuchen.portfolio.money.CurrencyConverter;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
+import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.ExchangeRate;
 import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.snapshot.ReportingPeriod;
@@ -595,6 +596,49 @@ public class PortfolioFileService {
         }
 
         return createBasicFileInfo(targetPath.toFile(), relativePath, renamedFileId);
+    }
+
+    /**
+     * Update the base (reporting) currency of a portfolio and persist the change.
+     *
+     * @param fileId The portfolio file ID
+     * @param currencyCode ISO 4217 currency code
+     * @param password Optional password for encrypted files when not already cached
+     * @return Updated portfolio file information
+     * @throws IOException if the portfolio cannot be loaded or saved
+     */
+    public PortfolioFileInfo updateBaseCurrency(String fileId, String currencyCode, char[] password) throws IOException {
+        if (currencyCode == null || currencyCode.trim().isEmpty()) {
+            throw new IllegalArgumentException("Currency code is required");
+        }
+
+        String normalizedCurrency = currencyCode.trim().toUpperCase();
+        if (!CurrencyUnit.containsCurrencyCode(normalizedCurrency)) {
+            throw new IllegalArgumentException("Unsupported currency code: " + normalizedCurrency);
+        }
+
+        String relativePath = findFileById(fileId);
+        File file = portfolioDirectory.resolve(relativePath).toFile();
+
+        Client client = getPortfolio(fileId);
+        if (client == null) {
+            validateFileAccess(file, relativePath, password);
+            client = loadClient(file, fileId, relativePath, password);
+        }
+
+        boolean changed = !normalizedCurrency.equals(client.getBaseCurrency());
+        if (changed) {
+            client.setBaseCurrency(normalizedCurrency);
+            client.markDirty();
+            saveFile(fileId);
+            logger.info("Updated base currency for portfolio {} to {}", fileId, normalizedCurrency);
+        } else {
+            logger.info("Base currency for portfolio {} already set to {}", fileId, normalizedCurrency);
+        }
+
+        PortfolioFileInfo fileInfo = createBasicFileInfo(file, relativePath, fileId);
+        populateClientData(fileInfo, client, file);
+        return fileInfo;
     }
 
     /**

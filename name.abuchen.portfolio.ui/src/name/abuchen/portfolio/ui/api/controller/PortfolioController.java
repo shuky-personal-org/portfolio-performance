@@ -13,6 +13,7 @@ import java.util.Map;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
+import javax.ws.rs.PATCH;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -32,6 +33,7 @@ import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot.CategoryType;
 import name.abuchen.portfolio.snapshot.ClientSnapshot;
 import name.abuchen.portfolio.snapshot.PerformanceIndex;
 import name.abuchen.portfolio.snapshot.ReportingPeriod;
+import name.abuchen.portfolio.ui.api.dto.BaseCurrencyUpdateRequest;
 import name.abuchen.portfolio.ui.api.dto.PerformanceCalculationDto;
 import name.abuchen.portfolio.ui.api.dto.PerformanceCalculationDto.MoneyValueDto;
 import name.abuchen.portfolio.ui.api.dto.PortfolioFileInfo;
@@ -198,6 +200,65 @@ public class PortfolioController extends BaseController {
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
                 "Failed to rename portfolio: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Update the base (reporting) currency of a portfolio.
+     *
+     * @param portfolioId The portfolio ID
+     * @param request Currency code and optional password for encrypted files
+     * @return Updated portfolio file information
+     */
+    @PATCH
+    @Path("/{portfolioId}/baseCurrency")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateBaseCurrency(@PathParam("portfolioId") String portfolioId,
+            BaseCurrencyUpdateRequest request) {
+        try {
+            logger.info("Updating base currency for portfolio: {}", portfolioId);
+
+            if (request == null || request.getCurrencyCode() == null || request.getCurrencyCode().trim().isEmpty()) {
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "INVALID_REQUEST",
+                    "Request body must contain a currencyCode");
+            }
+
+            char[] passwordChars = null;
+            if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
+                passwordChars = request.getPassword().toCharArray();
+            }
+
+            PortfolioFileInfo fileInfo = portfolioFileService.updateBaseCurrency(
+                portfolioId,
+                request.getCurrencyCode(),
+                passwordChars);
+
+            return Response.ok(fileInfo).build();
+
+        } catch (FileNotFoundException e) {
+            logger.warn("Portfolio not found for base currency update: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "PORTFOLIO_NOT_FOUND",
+                e.getMessage());
+
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid base currency update request: {}", e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "INVALID_REQUEST",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.error("Failed to update base currency for portfolio: {}", portfolioId, e);
+            if (e.getMessage() != null && e.getMessage().contains("Password required")) {
+                return createErrorResponse(Response.Status.UNAUTHORIZED,
+                    "PASSWORD_REQUIRED",
+                    e.getMessage());
+            }
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to update base currency: " + e.getMessage());
         }
     }
 
