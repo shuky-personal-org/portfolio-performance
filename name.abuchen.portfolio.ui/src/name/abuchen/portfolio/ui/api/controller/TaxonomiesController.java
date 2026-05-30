@@ -186,6 +186,11 @@ public class TaxonomiesController extends BaseController {
 
             return Response.status(Response.Status.CREATED).entity(response).build();
 
+        } catch (java.util.NoSuchElementException e) {
+            logger.warn("Invalid reference in taxonomy creation request for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid reference",
+                e.getMessage());
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid taxonomy creation request for portfolio {}: {}", portfolioId, e.getMessage());
             return createErrorResponse(Response.Status.BAD_REQUEST,
