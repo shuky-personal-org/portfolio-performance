@@ -32,6 +32,7 @@ import name.abuchen.portfolio.snapshot.security.CapitalGainsRecord;
 import name.abuchen.portfolio.snapshot.security.SecurityPerformanceRecord;
 import name.abuchen.portfolio.ui.api.dto.SecurityDto;
 import name.abuchen.portfolio.ui.api.dto.SecurityMutationDto;
+import name.abuchen.portfolio.ui.api.dto.SecurityPriceUpdatesDto;
 import name.abuchen.portfolio.ui.api.service.SecurityManagementService;
 import name.abuchen.portfolio.ui.api.service.SecurityManagementService.SecurityDeletionException;
 import name.abuchen.portfolio.ui.api.service.SecurityPerformanceSnapshotCacheService.SecurityPerformanceSnapshotBundle;
@@ -301,6 +302,124 @@ public class SecurityController extends BaseController {
         }
     }
     
+    /**
+     * Get the price update configuration for a security.
+     *
+     * @param portfolioId The portfolio ID
+     * @param securityUuid The security UUID
+     * @return Historical and latest quote feed configuration
+     */
+    @GET
+    @Path("/{securityUuid}/price-updates")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getSecurityPriceUpdates(@PathParam("portfolioId") String portfolioId,
+                    @PathParam("securityUuid") String securityUuid)
+    {
+        try
+        {
+            logger.info("Getting price updates for security {} in portfolio {}", securityUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null)
+            {
+                return createPreconditionRequiredResponse(
+                                "PORTFOLIO_NOT_LOADED",
+                                "Portfolio must be opened first before accessing securities");
+            }
+
+            SecurityPriceUpdatesDto priceUpdates = SecurityManagementService.getPriceUpdates(client, securityUuid);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("portfolioId", portfolioId);
+            response.put("securityUuid", securityUuid);
+            response.put("priceUpdates", priceUpdates);
+
+            return Response.ok(response).build();
+
+        }
+        catch (java.util.NoSuchElementException e)
+        {
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                            "Security not found",
+                            e.getMessage());
+        }
+        catch (Exception e)
+        {
+            logger.error("Unexpected error getting price updates for security {} in portfolio {}: {}",
+                            securityUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                            "Internal server error",
+                            e.getMessage());
+        }
+    }
+
+    /**
+     * Update the price update configuration for a security.
+     *
+     * @param portfolioId The portfolio ID
+     * @param securityUuid The security UUID
+     * @param priceUpdates Updated quote feed configuration
+     * @return Updated price update configuration
+     */
+    @PUT
+    @Path("/{securityUuid}/price-updates")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateSecurityPriceUpdates(@PathParam("portfolioId") String portfolioId,
+                    @PathParam("securityUuid") String securityUuid,
+                    SecurityPriceUpdatesDto priceUpdates)
+    {
+        try
+        {
+            logger.info("Updating price updates for security {} in portfolio {}", securityUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null)
+            {
+                return createPreconditionRequiredResponse(
+                                "PORTFOLIO_NOT_LOADED",
+                                "Portfolio must be opened first before updating securities");
+            }
+
+            Security security = SecurityManagementService.updatePriceUpdates(client, securityUuid, priceUpdates);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+            clearCache(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("securityUuid", securityUuid);
+            response.put("priceUpdates", SecurityManagementService.toPriceUpdatesDto(security));
+            response.put("message", "Security price updates updated successfully");
+
+            return Response.ok(response).build();
+
+        }
+        catch (java.util.NoSuchElementException e)
+        {
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                            "Security not found",
+                            e.getMessage());
+        }
+        catch (IllegalArgumentException e)
+        {
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                            "Invalid request",
+                            e.getMessage());
+        }
+        catch (Exception e)
+        {
+            logger.error("Unexpected error updating price updates for security {} in portfolio {}: {}",
+                            securityUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                            "Internal server error",
+                            e.getMessage());
+        }
+    }
+
     /**
      * Delete a security.
      * TODO: Implement security deletion

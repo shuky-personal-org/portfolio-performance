@@ -17,6 +17,7 @@ import name.abuchen.portfolio.ui.api.controller.HelloWorldController;
 import name.abuchen.portfolio.ui.api.controller.OptionsController;
 import name.abuchen.portfolio.ui.api.controller.PortfolioController;
 import name.abuchen.portfolio.ui.api.controller.PriceController;
+import name.abuchen.portfolio.ui.api.controller.QuoteFeedsController;
 import name.abuchen.portfolio.ui.api.controller.SecurityAccountsController;
 import name.abuchen.portfolio.ui.api.controller.SecurityController;
 import name.abuchen.portfolio.ui.api.controller.TaxonomiesController;
@@ -63,6 +64,7 @@ public class JerseyConfig extends ResourceConfig {
         
         // Register new specialized controllers
         register(SecurityController.class);
+        register(QuoteFeedsController.class);
         register(DashboardController.class);
         register(WidgetController.class);
         register(AccountsController.class);
