@@ -131,10 +131,10 @@ public class DashboardController extends BaseController {
                 e.getMessage());
 
         } catch (IOException e) {
-            logger.error("Failed to build dashboard download filename for portfolio {}: {}", portfolioId, e.getMessage(), e);
+            logger.error("Failed to serialize dashboard configurations for portfolio {}: {}", portfolioId, e.getMessage(), e);
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
-                "Failed to download dashboard configurations: " + e.getMessage());
+                "Failed to serialize dashboard configurations: " + e.getMessage());
 
         } catch (Exception e) {
             logger.error("Unexpected error downloading dashboard configurations for portfolio {}: {}",
@@ -274,10 +274,6 @@ public class DashboardController extends BaseController {
             basename = basename.substring(0, dotIndex);
         }
         return sanitizeAttachmentFilename(basename + "-dashboards.json");
-    }
-
-    private String sanitizeAttachmentFilename(String filename) {
-        return filename.replace("\\", "\\\\").replace("\"", "\\\"");
     }
     
 }
