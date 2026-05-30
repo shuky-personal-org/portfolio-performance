@@ -176,7 +176,7 @@ public final class TransactionManagementService
         var type = parseShareType(request.getType());
         var security = SecurityManagementService.findSecurity(client,
                         requireUuid(request.getSecurityUuid(), "Security UUID"));
-        var portfolio = findSecurityAccount(client,
+        var portfolio = SecurityAccountManagementService.findSecurityAccount(client,
                         requireUuid(request.getSecurityAccountUuid(), "Security account UUID"));
         var dateTime = request.getDateTime() != null ? request.getDateTime() : LocalDateTime.now();
         var shares = toInternalShares(requirePositive(request.getShares(), "Shares"));
@@ -362,7 +362,7 @@ public final class TransactionManagementService
     {
         var type = parseShareType(request.getType());
         SecurityManagementService.findSecurity(client, requireUuid(request.getSecurityUuid(), "Security UUID"));
-        var portfolio = findSecurityAccount(client,
+        var portfolio = SecurityAccountManagementService.findSecurityAccount(client,
                         requireUuid(request.getSecurityAccountUuid(), "Security account UUID"));
         requirePositive(request.getShares(), "Shares");
         requirePositive(request.getAmount(), "Amount");
@@ -390,15 +390,6 @@ public final class TransactionManagementService
             throw new IllegalArgumentException("Security account must have a reference cash account");
 
         return referenceAccount;
-    }
-
-    private static Portfolio findSecurityAccount(Client client, String securityAccountUuid)
-    {
-        return client.getPortfolios().stream()
-                        .filter(portfolio -> securityAccountUuid.equals(portfolio.getUUID()))
-                        .findFirst()
-                        .orElseThrow(() -> new NoSuchElementException(
-                                        "Security account with UUID " + securityAccountUuid + " not found in portfolio"));
     }
 
     private static void applyOptionalFields(Transaction transaction, TransactionMutationDto request, long shares)
