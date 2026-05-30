@@ -5,6 +5,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Resolves the IB Flex reports directory from {@code FLEX_REPORTS_DIR} or
  * {@code flex.reports.dir}. Used by the REST API, Redis flex import, and the
@@ -12,6 +15,8 @@ import java.util.Optional;
  */
 public final class FlexReportsDirectory
 {
+    private static final Logger logger = LoggerFactory.getLogger(FlexReportsDirectory.class);
+
     private FlexReportsDirectory()
     {
     }
@@ -75,17 +80,17 @@ public final class FlexReportsDirectory
             }
             catch (Exception e)
             {
-                // caller logs when import fails
+                logger.error("Failed to create Flex reports directory: {}", path, e);
             }
         }
         return path;
     }
 
     /**
-     * @return path suitable for SWT {@code FileDialog#setFilterPath}, or empty when unset
+     * @return path suitable for SWT {@code FileDialog#setFilterPath}, or empty when unset or missing
      */
     public static Optional<String> defaultFileDialogPath()
     {
-        return resolveConfigured().map(Path::toString);
+        return resolve().map(Path::toString);
     }
 }

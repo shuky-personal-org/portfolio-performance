@@ -15,6 +15,7 @@ echo "=================================================="
 WORKSPACE_DIR="${WORKSPACE_DIR:-/app/workspace}"
 PORTFOLIO_DIR="${PORTFOLIO_DIR:-/opt/pp/portfolios}"
 FLEX_REPORTS_DIR="${FLEX_REPORTS_DIR:-/app/out/flex}"
+export FLEX_REPORTS_DIR
 
 echo "Setting up directories..."
 echo "  Workspace: ${WORKSPACE_DIR}"
