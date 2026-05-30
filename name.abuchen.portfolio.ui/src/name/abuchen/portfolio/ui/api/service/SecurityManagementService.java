@@ -7,8 +7,10 @@ import java.util.Objects;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.money.CurrencyUnit;
+import name.abuchen.portfolio.online.Factory;
 import name.abuchen.portfolio.online.QuoteFeed;
 import name.abuchen.portfolio.ui.api.dto.SecurityMutationDto;
+import name.abuchen.portfolio.ui.api.dto.SecurityPriceUpdatesDto;
 
 public final class SecurityManagementService
 {
@@ -44,7 +46,7 @@ public final class SecurityManagementService
         security.setCurrencyCode(resolveCurrencyCode(request.getCurrencyCode(), client.getBaseCurrency()));
         applyOptionalFields(security, request, true);
         security.setFeed(request.getFeed() != null && !request.getFeed().isBlank()
-                        ? request.getFeed().trim()
+                        ? requireValidFeedId(request.getFeed())
                         : QuoteFeed.MANUAL);
 
         client.addSecurity(security);
@@ -77,6 +79,24 @@ public final class SecurityManagementService
         return security;
     }
 
+    public static SecurityPriceUpdatesDto getPriceUpdates(Client client, String securityUuid)
+    {
+        Objects.requireNonNull(client, "client");
+
+        var security = findSecurity(client, securityUuid);
+        return toPriceUpdatesDto(security);
+    }
+
+    public static Security updatePriceUpdates(Client client, String securityUuid, SecurityPriceUpdatesDto request)
+    {
+        Objects.requireNonNull(client, "client");
+        requirePriceUpdatesRequest(request);
+
+        var security = findSecurity(client, securityUuid);
+        applyPriceUpdates(security, request);
+        return security;
+    }
+
     public static Security deleteSecurity(Client client, String securityUuid)
     {
         Objects.requireNonNull(client, "client");
@@ -101,6 +121,51 @@ public final class SecurityManagementService
                                         "Security with UUID " + securityUuid + " not found in portfolio"));
     }
 
+    public static SecurityPriceUpdatesDto toPriceUpdatesDto(Security security)
+    {
+        var dto = new SecurityPriceUpdatesDto();
+        dto.setFeed(security.getFeed());
+        dto.setFeedURL(security.getFeedURL());
+        dto.setLatestFeed(security.getLatestFeed());
+        dto.setLatestFeedURL(security.getLatestFeedURL());
+        return dto;
+    }
+
+    private static void applyPriceUpdates(Security security, SecurityPriceUpdatesDto request)
+    {
+        security.setFeed(requireValidFeedId(request.getFeed()));
+
+        if (request.getFeedURL() != null)
+            security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
+
+        if (request.getLatestFeed() != null)
+        {
+            var latestFeed = normalizeOptionalString(request.getLatestFeed());
+            security.setLatestFeed(latestFeed);
+        }
+
+        if (request.getLatestFeedURL() != null)
+            security.setLatestFeedURL(normalizeOptionalString(request.getLatestFeedURL()));
+    }
+
+    private static void requirePriceUpdatesRequest(SecurityPriceUpdatesDto request)
+    {
+        if (request == null)
+            throw new IllegalArgumentException("Request body is required");
+
+        if (request.getFeed() == null || request.getFeed().isBlank())
+            throw new IllegalArgumentException("feed is required");
+    }
+
+    private static String requireValidFeedId(String feedId)
+    {
+        var normalizedFeedId = feedId.trim();
+        if (QuoteFeed.MANUAL.equals(normalizedFeedId) || Factory.getQuoteFeedProvider(normalizedFeedId) != null)
+            return normalizedFeedId;
+
+        throw new IllegalArgumentException("Unsupported quote feed: " + normalizedFeedId);
+    }
+
     private static void applyOptionalFields(Security security, SecurityMutationDto request, boolean isCreate)
     {
         if (request.getTargetCurrencyCode() != null)
@@ -122,7 +187,7 @@ public final class SecurityManagementService
             security.setRetired(request.getRetired().booleanValue());
 
         if (request.getFeed() != null && !request.getFeed().isBlank() && !isCreate)
-            security.setFeed(request.getFeed().trim());
+            security.setFeed(requireValidFeedId(request.getFeed()));
 
         if (request.getFeedURL() != null)
             security.setFeedURL(normalizeOptionalString(request.getFeedURL()));

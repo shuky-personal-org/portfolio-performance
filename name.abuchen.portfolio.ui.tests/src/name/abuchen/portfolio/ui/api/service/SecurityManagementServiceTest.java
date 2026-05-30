@@ -12,6 +12,7 @@ import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.online.QuoteFeed;
 import name.abuchen.portfolio.ui.api.dto.SecurityMutationDto;
+import name.abuchen.portfolio.ui.api.dto.SecurityPriceUpdatesDto;
 import name.abuchen.portfolio.ui.api.service.SecurityManagementService.SecurityDeletionException;
 
 public class SecurityManagementServiceTest
@@ -74,6 +75,56 @@ public class SecurityManagementServiceTest
 
         assertThat(deleted, is(security));
         assertThat(client.getSecurities().isEmpty(), is(true));
+    }
+
+    @Test
+    public void updatesPriceUpdatesConfiguration()
+    {
+        var client = new Client();
+        var security = new Security("Apple", CurrencyUnit.EUR);
+        security.setFeed(QuoteFeed.MANUAL);
+        client.addSecurity(security);
+
+        var request = new SecurityPriceUpdatesDto();
+        request.setFeed("YAHOO");
+        request.setFeedURL("https://example.com/quote");
+        request.setLatestFeed(QuoteFeed.MANUAL);
+        request.setLatestFeedURL("https://example.com/latest");
+
+        var updated = SecurityManagementService.updatePriceUpdates(client, security.getUUID(), request);
+
+        assertThat(updated.getFeed(), is("YAHOO"));
+        assertThat(updated.getFeedURL(), is("https://example.com/quote"));
+        assertThat(updated.getLatestFeed(), is(QuoteFeed.MANUAL));
+        assertThat(updated.getLatestFeedURL(), is("https://example.com/latest"));
+    }
+
+    @Test
+    public void readsPriceUpdatesConfiguration()
+    {
+        var client = new Client();
+        var security = new Security("Apple", CurrencyUnit.EUR);
+        security.setFeed("YAHOO");
+        security.setFeedURL("https://example.com/quote");
+        client.addSecurity(security);
+
+        var priceUpdates = SecurityManagementService.getPriceUpdates(client, security.getUUID());
+
+        assertThat(priceUpdates.getFeed(), is("YAHOO"));
+        assertThat(priceUpdates.getFeedURL(), is("https://example.com/quote"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsUnknownQuoteFeed()
+    {
+        var client = new Client();
+        var security = new Security("Apple", CurrencyUnit.EUR);
+        client.addSecurity(security);
+
+        var request = new SecurityPriceUpdatesDto();
+        request.setFeed("UNKNOWN_FEED");
+
+        SecurityManagementService.updatePriceUpdates(client, security.getUUID(), request);
     }
 
     @Test(expected = SecurityDeletionException.class)
