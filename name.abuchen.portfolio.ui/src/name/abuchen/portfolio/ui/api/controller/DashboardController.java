@@ -27,6 +27,7 @@ import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Dashboard;
 import name.abuchen.portfolio.ui.api.dto.DashboardDto;
 import name.abuchen.portfolio.ui.api.util.DashboardConverter;
+import name.abuchen.portfolio.ui.api.util.SystemDashboard;
 
 /**
  * REST Controller for dashboard operations.
@@ -49,20 +50,15 @@ public class DashboardController extends BaseController {
         try {
             logger.info("Getting all dashboards for portfolio: {}", portfolioId);
             
-            // Get the cached Client for this portfolio
-            Client client = portfolioFileService.getPortfolio(portfolioId);
-            
-            if (client == null) {
+            if (portfolioFileService.getPortfolio(portfolioId) == null) {
                 logger.warn("No cached client found for portfolio: {}", portfolioId);
                 return createPreconditionRequiredResponse(
                     "PORTFOLIO_NOT_LOADED", 
                     "Portfolio must be opened first before accessing dashboards");
             }
             
-            // Get all dashboards and convert using DashboardConverter
-            List<DashboardDto> dashboards = client.getDashboards()
-                .map(DashboardConverter::toDto)
-                .collect(Collectors.toList());
+            // Return only the hard-coded system dashboard; ignore portfolio-specific dashboards
+            List<DashboardDto> dashboards = List.of(SystemDashboard.toDto());
             
             // Create response
             Map<String, Object> response = new HashMap<>();
@@ -70,7 +66,7 @@ public class DashboardController extends BaseController {
             response.put("count", dashboards.size());
             response.put("dashboards", dashboards);
             
-            logger.info("Returning {} dashboards for portfolio {}", dashboards.size(), portfolioId);
+            logger.info("Returning system dashboard for portfolio {}", portfolioId);
             
             return Response.ok(response).build();
             
@@ -96,18 +92,14 @@ public class DashboardController extends BaseController {
         try {
             logger.info("Downloading dashboard configurations for portfolio: {}", portfolioId);
 
-            Client client = portfolioFileService.getPortfolio(portfolioId);
-
-            if (client == null) {
+            if (portfolioFileService.getPortfolio(portfolioId) == null) {
                 logger.warn("No cached client found for portfolio: {}", portfolioId);
                 return createPreconditionRequiredResponse(
                     "PORTFOLIO_NOT_LOADED",
                     "Portfolio must be opened first before downloading dashboard configurations");
             }
 
-            List<DashboardDto> dashboards = client.getDashboards()
-                .map(DashboardConverter::toDto)
-                .collect(Collectors.toList());
+            List<DashboardDto> dashboards = List.of(SystemDashboard.toDto());
 
             Map<String, Object> export = new HashMap<>();
             export.put("portfolioId", portfolioId);
@@ -172,29 +164,36 @@ public class DashboardController extends BaseController {
                     "Portfolio must be opened first before accessing dashboards");
             }
             
-            // Find the dashboard by ID
-            Dashboard dashboard = client.getDashboards()
-                .filter(d -> dashboardId.equals(d.getId()))
-                .findFirst()
-                .orElse(null);
-            
-            if (dashboard == null) {
-                logger.warn("Dashboard not found: {} in portfolio: {}", dashboardId, portfolioId);
-                return createErrorResponse(Response.Status.NOT_FOUND, 
-                    "Dashboard not found", 
-                    "Dashboard with ID " + dashboardId + " not found in portfolio");
+            DashboardDto dashboardDto;
+            if (SystemDashboard.isSystemDashboard(dashboardId))
+            {
+                dashboardDto = SystemDashboard.toDto();
             }
-            
-            // Convert to DTO using DashboardConverter
-            DashboardDto dashboardDto = DashboardConverter.toDto(dashboard);
+            else
+            {
+                Dashboard dashboard = client.getDashboards()
+                    .filter(d -> dashboardId.equals(d.getId()))
+                    .findFirst()
+                    .orElse(null);
+
+                if (dashboard == null)
+                {
+                    logger.warn("Dashboard not found: {} in portfolio: {}", dashboardId, portfolioId);
+                    return createErrorResponse(Response.Status.NOT_FOUND,
+                        "Dashboard not found",
+                        "Dashboard with ID " + dashboardId + " not found in portfolio");
+                }
+
+                dashboardDto = DashboardConverter.toDto(dashboard);
+            }
             
             // Create response
             Map<String, Object> response = new HashMap<>();
             response.put("portfolioId", portfolioId);
             response.put("dashboard", dashboardDto);
             
-            logger.info("Returning dashboard {} ({}) for portfolio {}", 
-                dashboard.getName(), dashboardId, portfolioId);
+            logger.info("Returning dashboard {} ({}) for portfolio {}",
+                dashboardDto.getName(), dashboardId, portfolioId);
             
             return Response.ok(response).build();
             

@@ -167,6 +167,7 @@ public class TaxonomyChartWidgetData {
     
     private Taxonomy getTaxonomyFromConfig() {
         String uuid = (config != null) ? config.get("TAXONOMY") : null;
+        String taxonomyName = (config != null) ? config.get("TAXONOMY_NAME") : null;
         
         Taxonomy taxonomy = null;
         
@@ -177,7 +178,14 @@ public class TaxonomyChartWidgetData {
                     .orElse(null);
         }
         
-        // Default to first taxonomy if none configured
+        if (taxonomy == null && taxonomyName != null) {
+            var lowerName = taxonomyName.toLowerCase(java.util.Locale.US);
+            taxonomy = dashboardData.getClient().getTaxonomies().stream()
+                    .filter(t -> t.getName() != null && t.getName().toLowerCase(java.util.Locale.US).contains(lowerName))
+                    .findFirst()
+                    .orElse(null);
+        }
+        
         if (taxonomy == null && !dashboardData.getClient().getTaxonomies().isEmpty()) {
             taxonomy = dashboardData.getClient().getTaxonomies().get(0);
         }

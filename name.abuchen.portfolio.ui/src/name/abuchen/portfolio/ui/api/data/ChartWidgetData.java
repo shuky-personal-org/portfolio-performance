@@ -63,12 +63,8 @@ public class ChartWidgetData {
         try {
             logger.debug("Generating data for chart widget: {}, useCase: {}", widgetId, useCase);
             
-            // Get chart configuration
+            // Get chart configuration (null/empty falls back to default series in serializer)
             String chartConfigData = getChartConfigData();
-            if (chartConfigData == null || chartConfigData.isEmpty()) {
-                logger.warn("No chart configuration data found for widget: {}", widgetId);
-                return createErrorResponse("No chart configuration found");
-            }
             
             // Get reporting period
             Interval reportingPeriod = getReportingPeriodFromConfig();
@@ -79,8 +75,14 @@ public class ChartWidgetData {
                 aggregation = getAggregationFromConfig();
             }
             
-            // Parse data series from configuration
-            List<DataSeries> series = new DataSeriesSerializer().fromString(dataSeriesSet, chartConfigData);
+            // Parse data series from configuration, using defaults when none is stored
+            List<DataSeries> series = new DataSeriesSerializer().fromString(dataSeriesSet,
+                            (chartConfigData == null || chartConfigData.isEmpty()) ? null : chartConfigData);
+
+            if (series.isEmpty()) {
+                logger.warn("No chart series available for widget: {}", widgetId);
+                return createErrorResponse("No chart series available");
+            }
             
             // Calculate data for each series
             List<Map<String, Object>> seriesData = new ArrayList<>();
@@ -281,6 +283,11 @@ public class ChartWidgetData {
     }
     
     private String getChartConfigData() {
+        String directDataSeries = (config != null) ? config.get("DATA_SERIES") : null;
+        if (directDataSeries != null && !directDataSeries.isEmpty()) {
+            return directDataSeries;
+        }
+        
         String configName = (useCase == DataSeries.UseCase.STATEMENT_OF_ASSETS 
                 ? StatementOfAssetsHistoryView.class 
                 : PerformanceChartView.class).getSimpleName() + BasicDataSeriesConfigurator.IDENTIFIER_POSTFIX;
