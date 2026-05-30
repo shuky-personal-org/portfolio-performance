@@ -23,6 +23,7 @@ import name.abuchen.portfolio.ui.api.dto.FlexImportResponse;
 import name.abuchen.portfolio.ui.api.dto.FlexImportPreviewResponse;
 import name.abuchen.portfolio.ui.api.service.FlexImportService;
 import name.abuchen.portfolio.ui.api.service.PortfolioFileService;
+import name.abuchen.portfolio.ui.util.FlexReportsDirectory;
 
 /**
  * REST Controller for IB Flex report imports.
@@ -46,32 +47,11 @@ public class FlexImportController extends BaseController
      */
     private static Path getFlexReportsDirectory()
     {
-        String flexReportsDir = System.getenv("FLEX_REPORTS_DIR");
-        if (flexReportsDir == null)
-        {
-            flexReportsDir = System.getProperty("flex.reports.dir");
-        }
-        if (flexReportsDir == null)
-        {
-            // Default to current working directory
-            flexReportsDir = System.getProperty("user.dir");
-        }
-        Path path = Paths.get(flexReportsDir).toAbsolutePath();
-        
-        // Ensure directory exists
+        Path path = FlexReportsDirectory.resolveOrCreate();
         if (!Files.exists(path))
-        {
-            try
-            {
-                Files.createDirectories(path);
-                logger.info("Created Flex reports directory: {}", path);
-            }
-            catch (Exception e)
-            {
-                logger.error("Failed to create Flex reports directory: {}", path, e);
-            }
-        }
-        
+            logger.warn("Flex reports directory does not exist: {}", path);
+        else if (!Files.isDirectory(path))
+            logger.warn("Flex reports path is not a directory: {}", path);
         return path;
     }
 

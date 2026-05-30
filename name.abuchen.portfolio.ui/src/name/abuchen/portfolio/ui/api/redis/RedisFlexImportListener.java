@@ -22,6 +22,7 @@ import com.google.gson.reflect.TypeToken;
 
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.ui.api.service.FlexImportService;
+import name.abuchen.portfolio.ui.util.FlexReportsDirectory;
 import name.abuchen.portfolio.ui.api.service.PortfolioFileService;
 import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.HostAndPort;
@@ -128,17 +129,9 @@ public class RedisFlexImportListener
         }
     }
 
-    /**
-     * Same resolution as {@link name.abuchen.portfolio.ui.api.controller.FlexImportController}.
-     */
     private static Path getFlexReportsDirectory()
     {
-        String flexReportsDir = System.getenv("FLEX_REPORTS_DIR"); //$NON-NLS-1$
-        if (flexReportsDir == null)
-            flexReportsDir = System.getProperty("flex.reports.dir"); //$NON-NLS-1$
-        if (flexReportsDir == null)
-            flexReportsDir = System.getProperty("user.dir"); //$NON-NLS-1$
-        return Paths.get(flexReportsDir).toAbsolutePath();
+        return FlexReportsDirectory.resolveConfiguredOrUserDir();
     }
 
     public void start()
