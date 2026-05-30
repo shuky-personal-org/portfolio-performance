@@ -41,7 +41,7 @@ public final class SecurityAccountManagementService
 
         var portfolio = new Portfolio();
         portfolio.setName(requireName(request.getName()));
-        portfolio.setNote(normalizeNote(request.getNote()));
+        portfolio.setNote(ServiceUtils.normalizeNote(request.getNote()));
         portfolio.setRetired(Boolean.TRUE.equals(request.getRetired()));
         portfolio.setReferenceAccount(resolveReferenceAccount(client, request.getReferenceAccountUuid()));
 
@@ -65,7 +65,7 @@ public final class SecurityAccountManagementService
             portfolio.setName(name);
 
         if (request.getNote() != null)
-            portfolio.setNote(normalizeNote(request.getNote()));
+            portfolio.setNote(ServiceUtils.normalizeNote(request.getNote()));
 
         if (request.getRetired() != null)
             portfolio.setRetired(request.getRetired().booleanValue());
@@ -112,15 +112,6 @@ public final class SecurityAccountManagementService
             throw new IllegalArgumentException("Security account name is required");
 
         return name.trim();
-    }
-
-    private static String normalizeNote(String note)
-    {
-        if (note == null)
-            return null;
-
-        var trimmed = note.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private static Account resolveReferenceAccount(Client client, String referenceAccountUuid)
