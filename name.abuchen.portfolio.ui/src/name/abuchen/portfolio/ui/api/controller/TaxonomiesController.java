@@ -251,7 +251,9 @@ public class TaxonomiesController extends BaseController {
 
         } catch (java.util.NoSuchElementException e) {
             String message = e.getMessage();
-            if (message != null && message.startsWith("Taxonomy")) {
+            // Check specifically for "Taxonomy ... not found" to distinguish from validation
+            // errors like "Taxonomy ID is required" which should be 400 Bad Request
+            if (message != null && message.startsWith("Taxonomy") && message.contains("not found")) {
                 logger.warn("Taxonomy not found: {} in portfolio: {}", taxonomyId, portfolioId);
                 return createErrorResponse(Response.Status.NOT_FOUND,
                     "Taxonomy not found",
