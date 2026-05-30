@@ -310,32 +310,38 @@ public final class TransactionManagementService
 
     private static AccountTransaction.Type parseAccountType(String type)
     {
+        AccountTransaction.Type parsed;
         try
         {
-            var parsed = AccountTransaction.Type.valueOf(type.trim().toUpperCase(Locale.ROOT));
-            if (!ACCOUNT_ONLY_TYPES.contains(parsed))
-                throw new IllegalArgumentException("Unsupported account transaction type: " + type);
-            return parsed;
+            parsed = AccountTransaction.Type.valueOf(type.trim().toUpperCase(Locale.ROOT));
         }
         catch (IllegalArgumentException e)
         {
             throw new IllegalArgumentException("Unsupported account transaction type: " + type, e);
         }
+
+        if (!ACCOUNT_ONLY_TYPES.contains(parsed))
+            throw new IllegalArgumentException("Unsupported account transaction type: " + type);
+
+        return parsed;
     }
 
     private static PortfolioTransaction.Type parsePortfolioType(String type)
     {
+        PortfolioTransaction.Type parsed;
         try
         {
-            var parsed = PortfolioTransaction.Type.valueOf(type.trim().toUpperCase(Locale.ROOT));
-            if (!PORTFOLIO_ONLY_TYPES.contains(parsed))
-                throw new IllegalArgumentException("Unsupported portfolio transaction type: " + type);
-            return parsed;
+            parsed = PortfolioTransaction.Type.valueOf(type.trim().toUpperCase(Locale.ROOT));
         }
         catch (IllegalArgumentException e)
         {
             throw new IllegalArgumentException("Unsupported portfolio transaction type: " + type, e);
         }
+
+        if (!PORTFOLIO_ONLY_TYPES.contains(parsed))
+            throw new IllegalArgumentException("Unsupported portfolio transaction type: " + type);
+
+        return parsed;
     }
 
     private static Security resolveSecurity(Client client, String securityUuid, boolean required)
