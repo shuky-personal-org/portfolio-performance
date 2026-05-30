@@ -23,6 +23,7 @@ import name.abuchen.portfolio.ui.api.dto.ColumnDto;
 import name.abuchen.portfolio.ui.api.dto.DashboardDto;
 import name.abuchen.portfolio.ui.api.dto.WidgetDto;
 import name.abuchen.portfolio.ui.api.util.DashboardConverter;
+import name.abuchen.portfolio.ui.api.util.SystemDashboard;
 
 /**
  * REST Controller for widget operations.
@@ -57,17 +58,25 @@ public class WidgetController extends BaseController {
                     "Portfolio must be opened first before accessing widgets");
             }
             
-            // Find the dashboard by ID
-            Dashboard dashboard = client.getDashboards()
-                .filter(d -> dashboardId.equals(d.getId()))
-                .findFirst()
-                .orElse(null);
-            
-            if (dashboard == null) {
-                logger.warn("Dashboard not found: {} in portfolio: {}", dashboardId, portfolioId);
-                return createErrorResponse(Response.Status.NOT_FOUND, 
-                    "Dashboard not found", 
-                    "Dashboard with ID " + dashboardId + " not found");
+            Dashboard dashboard;
+            if (SystemDashboard.isSystemDashboard(dashboardId))
+            {
+                dashboard = SystemDashboard.getDashboard();
+            }
+            else
+            {
+                dashboard = client.getDashboards()
+                    .filter(d -> dashboardId.equals(d.getId()))
+                    .findFirst()
+                    .orElse(null);
+
+                if (dashboard == null)
+                {
+                    logger.warn("Dashboard not found: {} in portfolio: {}", dashboardId, portfolioId);
+                    return createErrorResponse(Response.Status.NOT_FOUND,
+                        "Dashboard not found",
+                        "Dashboard with ID " + dashboardId + " not found");
+                }
             }
             
             // Convert dashboard to DTO to get all widgets
@@ -146,17 +155,25 @@ public class WidgetController extends BaseController {
                     "Portfolio must be opened first before accessing widgets");
             }
             
-            // Find the dashboard by ID
-            Dashboard dashboard = client.getDashboards()
-                .filter(d -> dashboardId.equals(d.getId()))
-                .findFirst()
-                .orElse(null);
-            
-            if (dashboard == null) {
-                logger.warn("Dashboard not found: {} in portfolio: {}", dashboardId, portfolioId);
-                return createErrorResponse(Response.Status.NOT_FOUND, 
-                    "Dashboard not found", 
-                    "Dashboard with ID " + dashboardId + " not found");
+            Dashboard dashboard;
+            if (SystemDashboard.isSystemDashboard(dashboardId))
+            {
+                dashboard = SystemDashboard.getDashboard();
+            }
+            else
+            {
+                dashboard = client.getDashboards()
+                    .filter(d -> dashboardId.equals(d.getId()))
+                    .findFirst()
+                    .orElse(null);
+
+                if (dashboard == null)
+                {
+                    logger.warn("Dashboard not found: {} in portfolio: {}", dashboardId, portfolioId);
+                    return createErrorResponse(Response.Status.NOT_FOUND,
+                        "Dashboard not found",
+                        "Dashboard with ID " + dashboardId + " not found");
+                }
             }
             
             // Get the columns from the dashboard
