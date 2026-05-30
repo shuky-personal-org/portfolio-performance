@@ -7,16 +7,34 @@ import java.time.LocalDateTime;
  */
 public class TransactionMutationDto
 {
+    /** "ACCOUNT" or "PORTFOLIO" — used by the general transactions API. */
+    private String transactionType;
+
+    /** AccountTransaction.Type or PortfolioTransaction.Type name. */
     private String type;
+
+    /** UUID of the owning account or security account (portfolio). */
+    private String ownerUuid;
+
     private String securityUuid;
     private String securityAccountUuid;
     private String accountUuid;
     private LocalDateTime dateTime;
-    private Double shares;
     private Double amount;
     private String currencyCode;
+    private Double shares;
     private String note;
     private String source;
+
+    public String getTransactionType()
+    {
+        return transactionType;
+    }
+
+    public void setTransactionType(String transactionType)
+    {
+        this.transactionType = transactionType;
+    }
 
     public String getType()
     {
@@ -26,6 +44,16 @@ public class TransactionMutationDto
     public void setType(String type)
     {
         this.type = type;
+    }
+
+    public String getOwnerUuid()
+    {
+        return ownerUuid;
+    }
+
+    public void setOwnerUuid(String ownerUuid)
+    {
+        this.ownerUuid = ownerUuid;
     }
 
     public String getSecurityUuid()
@@ -68,16 +96,6 @@ public class TransactionMutationDto
         this.dateTime = dateTime;
     }
 
-    public Double getShares()
-    {
-        return shares;
-    }
-
-    public void setShares(Double shares)
-    {
-        this.shares = shares;
-    }
-
     public Double getAmount()
     {
         return amount;
@@ -96,6 +114,16 @@ public class TransactionMutationDto
     public void setCurrencyCode(String currencyCode)
     {
         this.currencyCode = currencyCode;
+    }
+
+    public Double getShares()
+    {
+        return shares;
+    }
+
+    public void setShares(Double shares)
+    {
+        this.shares = shares;
     }
 
     public String getNote()

@@ -48,20 +48,17 @@ public class TransactionsController extends BaseController {
         try {
             logger.info("Getting all transactions for portfolio: {}", portfolioId);
             
-            // Get the cached Client for this portfolio
             Client client = portfolioFileService.getPortfolio(portfolioId);
-            
+
             if (client == null) {
                 logger.warn("No cached client found for portfolio: {}", portfolioId);
                 return createPreconditionRequiredResponse(
-                    "PORTFOLIO_NOT_LOADED", 
+                    "PORTFOLIO_NOT_LOADED",
                     "Portfolio must be opened first before accessing transactions");
             }
-            
-            // Get all de-duplicated transactions and convert to DTOs
+
             List<TransactionDto> transactions = convertTransactionsToDto(client.getAllTransactions());
             
-            // Create response
             Map<String, Object> response = new HashMap<>();
             response.put("portfolioId", portfolioId);
             response.put("count", transactions.size());
@@ -95,33 +92,18 @@ public class TransactionsController extends BaseController {
         try {
             logger.info("Getting transaction {} for portfolio {}", transactionUuid, portfolioId);
             
-            // Get the cached Client for this portfolio
             Client client = portfolioFileService.getPortfolio(portfolioId);
-            
+
             if (client == null) {
                 logger.warn("No cached client found for portfolio: {}", portfolioId);
                 return createPreconditionRequiredResponse(
-                    "PORTFOLIO_NOT_LOADED", 
+                    "PORTFOLIO_NOT_LOADED",
                     "Portfolio must be opened first before accessing transactions");
             }
-            
-            // Find the transaction by UUID
-            TransactionPair<?> txPair = client.getAllTransactions().stream()
-                .filter(pair -> transactionUuid.equals(pair.getTransaction().getUUID()))
-                .findFirst()
-                .orElse(null);
-            
-            if (txPair == null) {
-                logger.warn("Transaction not found: {} in portfolio: {}", transactionUuid, portfolioId);
-                return createErrorResponse(Response.Status.NOT_FOUND, 
-                    "Transaction not found", 
-                    "Transaction with UUID " + transactionUuid + " not found in portfolio");
-            }
-            
-            // Convert to DTO
+
+            TransactionPair<?> txPair = TransactionManagementService.findTransaction(client, transactionUuid);
             TransactionDto transactionDto = convertTransactionPairToDto(txPair);
             
-            // Create response
             Map<String, Object> response = new HashMap<>();
             response.put("portfolioId", portfolioId);
             response.put("transaction", transactionDto);
@@ -130,6 +112,11 @@ public class TransactionsController extends BaseController {
             
             return Response.ok(response).build();
             
+        } catch (NoSuchElementException e) {
+            logger.warn("Transaction not found: {} in portfolio: {}", transactionUuid, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Transaction not found",
+                e.getMessage());
         } catch (Exception e) {
             logger.error("Unexpected error getting transaction {} for portfolio {}: {}", 
                 transactionUuid, portfolioId, e.getMessage(), e);
@@ -141,7 +128,6 @@ public class TransactionsController extends BaseController {
     
     /**
      * Create a new transaction.
-     * TODO: Implement transaction creation
      * 
      * @param portfolioId The portfolio ID
      * @param transactionData Transaction data
@@ -170,20 +156,23 @@ public class TransactionsController extends BaseController {
             portfolioFileService.saveFile(portfolioId);
             SecurityController.clearCache(portfolioId);
 
+            TransactionDto transactionDto = convertTransactionPairToDto(pair);
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("portfolioId", portfolioId);
-            response.put("transaction", convertTransactionPairToDto(pair));
+            response.put("transaction", transactionDto);
             response.put("message", "Transaction created successfully");
 
-            logger.info("Created transaction {} for portfolio {}", pair.getTransaction().getUUID(), portfolioId);
+            logger.info("Created transaction {} for portfolio {}", transactionDto.getUuid(), portfolioId);
 
             return Response.status(Response.Status.CREATED).entity(response).build();
 
         } catch (NoSuchElementException e) {
-            logger.warn("Entity not found while creating transaction for portfolio {}: {}", portfolioId, e.getMessage());
+            logger.warn("Referenced entity not found while creating transaction for portfolio {}: {}",
+                portfolioId, e.getMessage());
             return createErrorResponse(Response.Status.NOT_FOUND,
-                "Entity not found",
+                "Referenced entity not found",
                 e.getMessage());
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid transaction creation request for portfolio {}: {}", portfolioId, e.getMessage());
@@ -201,7 +190,6 @@ public class TransactionsController extends BaseController {
     
     /**
      * Update an existing transaction.
-     * TODO: Implement transaction update
      * 
      * @param portfolioId The portfolio ID
      * @param transactionUuid The transaction UUID
@@ -228,7 +216,7 @@ public class TransactionsController extends BaseController {
             }
 
             TransactionPair<?> pair = TransactionManagementService.updateTransaction(client, transactionUuid,
-                            transactionData);
+                transactionData);
             client.markDirty();
             portfolioFileService.saveFile(portfolioId);
             SecurityController.clearCache(portfolioId);
@@ -265,7 +253,6 @@ public class TransactionsController extends BaseController {
     
     /**
      * Delete a transaction.
-     * TODO: Implement transaction deletion
      * 
      * @param portfolioId The portfolio ID
      * @param transactionUuid The transaction UUID
@@ -293,10 +280,17 @@ public class TransactionsController extends BaseController {
             portfolioFileService.saveFile(portfolioId);
             SecurityController.clearCache(portfolioId);
 
+            var transaction = pair.getTransaction();
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("portfolioId", portfolioId);
             response.put("transactionUuid", transactionUuid);
+            response.put("transactionType", pair.getOwner() instanceof name.abuchen.portfolio.model.Account
+                ? "ACCOUNT" : "PORTFOLIO");
+            response.put("type", transaction instanceof AccountTransaction
+                ? ((AccountTransaction) transaction).getType().name()
+                : ((PortfolioTransaction) transaction).getType().name());
             response.put("message", "Transaction deleted successfully");
 
             logger.info("Deleted transaction {} for portfolio {}", transactionUuid, portfolioId);
@@ -316,10 +310,9 @@ public class TransactionsController extends BaseController {
                 e.getMessage());
         }
     }
-    
+
     /**
      * Helper method to convert a list of TransactionPair objects to TransactionDto list.
-     * Migrated from PortfolioFileService.loadTransactions()
      */
     private List<TransactionDto> convertTransactionsToDto(List<TransactionPair<?>> transactionPairs) {
         List<TransactionDto> transactionDtos = new ArrayList<>();
@@ -328,7 +321,6 @@ public class TransactionsController extends BaseController {
             transactionDtos.add(convertTransactionPairToDto(pair));
         }
         
-        // Sort by date descending (newest first)
         transactionDtos.sort((t1, t2) -> t2.getDateTime().compareTo(t1.getDateTime()));
         
         return transactionDtos;
@@ -342,26 +334,21 @@ public class TransactionsController extends BaseController {
         
         var transaction = pair.getTransaction();
         
-        // Set common fields
         dto.setUuid(transaction.getUUID());
         dto.setDateTime(transaction.getDateTime());
         dto.setCurrencyCode(transaction.getCurrencyCode());
-        // Convert amount from internal representation to decimal
         dto.setAmount(transaction.getAmount() / Values.Amount.divider());
         dto.setNote(transaction.getNote());
         dto.setSource(transaction.getSource());
         dto.setUpdatedAt(transaction.getUpdatedAt());
         
-        // Set security info if present
         if (transaction.getSecurity() != null) {
             dto.setSecurityUuid(transaction.getSecurity().getUUID());
             dto.setSecurityName(transaction.getSecurity().getName());
         }
         
-        // Convert shares from internal representation to decimal
         dto.setShares(transaction.getShares() / (double) Values.Share.factor());
         
-        // Set owner info and transaction type
         if (pair.getOwner() instanceof name.abuchen.portfolio.model.Account) {
             name.abuchen.portfolio.model.Account account = (name.abuchen.portfolio.model.Account) pair.getOwner();
             dto.setOwnerUuid(account.getUUID());
@@ -387,4 +374,3 @@ public class TransactionsController extends BaseController {
         return dto;
     }
 }
-
