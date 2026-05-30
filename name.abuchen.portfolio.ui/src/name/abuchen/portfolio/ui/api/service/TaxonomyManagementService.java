@@ -67,19 +67,35 @@ public final class TaxonomyManagementService
 
         var taxonomy = findTaxonomy(client, taxonomyId);
 
+        // Determine the new name first (needed for building root)
+        String newName = null;
         if (request.getName() != null)
         {
-            var name = requireName(request.getName());
-            taxonomy.setName(name);
+            newName = requireName(request.getName());
+        }
+
+        // Build the new root tree first (before any mutations) to ensure atomicity
+        // If this throws, the taxonomy remains unchanged
+        Classification newRoot = null;
+        if (request.getRoot() != null)
+        {
+            var nameForRoot = newName != null ? newName : taxonomy.getName();
+            newRoot = buildClassification(client, null, request.getRoot(), nameForRoot);
+        }
+
+        // Now apply all mutations - these are all in-memory operations that won't throw
+        if (newName != null)
+        {
+            taxonomy.setName(newName);
             if (taxonomy.getRoot() != null)
-                taxonomy.getRoot().setName(name);
+                taxonomy.getRoot().setName(newName);
         }
 
         applyTaxonomyMetadata(taxonomy, request, false);
 
-        if (request.getRoot() != null)
+        if (newRoot != null)
         {
-            taxonomy.setRootNode(buildClassification(client, null, request.getRoot(), taxonomy.getName()));
+            taxonomy.setRootNode(newRoot);
             if (taxonomy.getRoot() != null)
                 taxonomy.getRoot().setName(taxonomy.getName());
         }
