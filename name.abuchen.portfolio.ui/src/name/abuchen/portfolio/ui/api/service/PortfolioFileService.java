@@ -3,6 +3,7 @@ package name.abuchen.portfolio.ui.api.service;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -226,6 +227,36 @@ public class PortfolioFileService {
         return fileInfo;
     }
     
+    /**
+     * Sets base currency on file info from cache or a lightweight read of the file header.
+     */
+    private void enrichBaseCurrencyFromFile(PortfolioFileInfo fileInfo, File file) {
+        Client cached = clientCache.get(fileInfo.getId());
+        if (cached != null) {
+            fileInfo.setBaseCurrency(cached.getBaseCurrency());
+            return;
+        }
+
+        try {
+            String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            String openTag = "<baseCurrency>";
+            int start = content.indexOf(openTag);
+            if (start < 0)
+                return;
+
+            int valueStart = start + openTag.length();
+            int end = content.indexOf("</baseCurrency>", valueStart);
+            if (end <= valueStart)
+                return;
+
+            String currency = content.substring(valueStart, end).trim();
+            if (!currency.isEmpty())
+                fileInfo.setBaseCurrency(currency);
+        } catch (IOException e) {
+            logger.debug("Could not read base currency from {}", file.getName(), e);
+        }
+    }
+
     /**
      * Populates the file info with client-specific data.
      * 
@@ -501,6 +532,7 @@ public class PortfolioFileService {
                          String relativePath = portfolioDirectory.relativize(path).toString();
                          
                          PortfolioFileInfo fileInfo = createBasicFileInfo(file, relativePath, generateFileId(relativePath));
+                         enrichBaseCurrencyFromFile(fileInfo, file);
                          
                          files.add(fileInfo);
                          
