@@ -30,6 +30,7 @@ import name.abuchen.portfolio.ui.UIConstants;
 import name.abuchen.portfolio.ui.PortfolioPlugin;
 import name.abuchen.portfolio.ui.editor.FilePathHelper;
 import name.abuchen.portfolio.ui.editor.PortfolioPart;
+import name.abuchen.portfolio.ui.util.FlexReportsDirectory;
 import name.abuchen.portfolio.ui.wizards.datatransfer.ImportExtractedItemsWizard;
 
 public class ImportIBHandler
@@ -73,7 +74,7 @@ public class ImportIBHandler
             fileDialog.setFilterNames(
                             new String[] { MessageFormat.format("{0} ({1})", extractor.getLabel(), "*.xml") }); //$NON-NLS-1$ //$NON-NLS-2$
             fileDialog.setFilterExtensions(new String[] { "*.xml;*.XML" }); //$NON-NLS-1$
-            fileDialog.setFilterPath(helper.getPath());
+            fileDialog.setFilterPath(FlexReportsDirectory.defaultFileDialogPath().orElseGet(helper::getPath));
             fileDialog.open();
 
             String[] filenames = fileDialog.getFileNames();

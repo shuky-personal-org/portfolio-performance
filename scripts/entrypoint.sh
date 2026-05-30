@@ -55,4 +55,3 @@ case "${RUN_MODE}" in
     exit 1
     ;;
 esac
-
