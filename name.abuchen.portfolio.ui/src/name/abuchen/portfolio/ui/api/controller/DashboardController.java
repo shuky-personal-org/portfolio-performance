@@ -1,5 +1,8 @@
 package name.abuchen.portfolio.ui.api.controller;
 
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +18,9 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Dashboard;
@@ -76,6 +82,69 @@ public class DashboardController extends BaseController {
         }
     }
     
+    /**
+     * Download all dashboard configurations for a portfolio as a JSON file.
+     *
+     * @param portfolioId The portfolio ID
+     * @return JSON attachment containing dashboard configurations
+     */
+    @GET
+    @Path("/download")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response downloadDashboardsConfiguration(@PathParam("portfolioId") String portfolioId) {
+        try {
+            logger.info("Downloading dashboard configurations for portfolio: {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before downloading dashboard configurations");
+            }
+
+            List<DashboardDto> dashboards = client.getDashboards()
+                .map(DashboardConverter::toDto)
+                .collect(Collectors.toList());
+
+            Map<String, Object> export = new HashMap<>();
+            export.put("portfolioId", portfolioId);
+            export.put("count", dashboards.size());
+            export.put("dashboards", dashboards);
+
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.enable(SerializationFeature.INDENT_OUTPUT);
+            byte[] jsonBytes = mapper.writeValueAsString(export).getBytes(StandardCharsets.UTF_8);
+
+            String filename = buildDashboardsDownloadFilename(portfolioId);
+
+            return Response.ok(jsonBytes, MediaType.APPLICATION_JSON)
+                            .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                            .header("X-Content-Type-Options", "nosniff")
+                            .build();
+
+        } catch (FileNotFoundException e) {
+            logger.warn("Portfolio not found for dashboard download: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "PORTFOLIO_NOT_FOUND",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.error("Failed to build dashboard download filename for portfolio {}: {}", portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to download dashboard configurations: " + e.getMessage());
+
+        } catch (Exception e) {
+            logger.error("Unexpected error downloading dashboard configurations for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
+    }
+
     /**
      * Get a specific dashboard by ID.
      * 
@@ -195,6 +264,20 @@ public class DashboardController extends BaseController {
         return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
             "Not implemented", 
             "Dashboard deletion not yet implemented");
+    }
+
+    private String buildDashboardsDownloadFilename(String portfolioId) throws IOException {
+        java.nio.file.Path filePath = portfolioFileService.getPortfolioFilePath(portfolioId);
+        String basename = filePath.getFileName().toString();
+        int dotIndex = basename.lastIndexOf('.');
+        if (dotIndex > 0) {
+            basename = basename.substring(0, dotIndex);
+        }
+        return sanitizeAttachmentFilename(basename + "-dashboards.json");
+    }
+
+    private String sanitizeAttachmentFilename(String filename) {
+        return filename.replace("\\", "\\\\").replace("\"", "\\\"");
     }
     
 }
