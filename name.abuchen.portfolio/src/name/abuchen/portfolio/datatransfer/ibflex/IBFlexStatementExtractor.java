@@ -825,7 +825,7 @@ public class IBFlexStatementExtractor implements Extractor
             if (accountCurrency != null && securityCurrency.equals(accountCurrency))
             {
                 grossValue = Money.of(securityCurrency, baseAmountValue);
-                exchangeRate = BigDecimal.valueOf(grossValue.getAmount()).divide(BigDecimal.valueOf(amount.getAmount()),
+                exchangeRate = BigDecimal.valueOf(amount.getAmount()).divide(BigDecimal.valueOf(grossValue.getAmount()),
                                 10, RoundingMode.HALF_DOWN);
             }
             else if (accountCurrency != null && amount.getCurrencyCode().equals(accountCurrency))
@@ -837,8 +837,8 @@ public class IBFlexStatementExtractor implements Extractor
                 grossValue = Money.of(securityCurrency,
                                 BigDecimal.valueOf(baseAmountValue).divide(securityFxRate, Values.MC)
                                                 .setScale(0, RoundingMode.HALF_UP).longValue());
-                exchangeRate = BigDecimal.valueOf(grossValue.getAmount()).divide(
-                                BigDecimal.valueOf(amount.getAmount()), 10, RoundingMode.HALF_DOWN);
+                exchangeRate = BigDecimal.valueOf(amount.getAmount()).divide(
+                                BigDecimal.valueOf(grossValue.getAmount()), 10, RoundingMode.HALF_DOWN);
             }
             else
             {
