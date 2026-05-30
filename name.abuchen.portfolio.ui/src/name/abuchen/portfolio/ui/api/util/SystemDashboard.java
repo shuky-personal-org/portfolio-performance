@@ -10,7 +10,7 @@ import name.abuchen.portfolio.ui.api.dto.DashboardDto;
 
 /**
  * Hard-coded "Main" dashboard served for every portfolio via the web API.
- * Portfolio-specific dashboard configurations are ignored for listing and lookup.
+ * It is always included in dashboard listings alongside portfolio-specific dashboards.
  */
 public final class SystemDashboard
 {
