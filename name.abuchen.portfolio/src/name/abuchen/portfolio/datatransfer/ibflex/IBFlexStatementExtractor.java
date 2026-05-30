@@ -817,6 +817,12 @@ public class IBFlexStatementExtractor implements Extractor
             String securityCurrency = security.getCurrencyCode();
             long baseAmountValue = Math.abs(asAmountOrZero(element.getAttribute("positionAmountInBase")));
 
+            if (baseAmountValue == 0)
+            {
+                setAmount(element, transaction, amount);
+                return;
+            }
+
             transaction.setMonetaryAmount(amount);
 
             Money grossValue;
