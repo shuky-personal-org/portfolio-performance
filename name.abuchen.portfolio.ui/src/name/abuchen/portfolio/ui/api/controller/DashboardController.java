@@ -21,6 +21,7 @@ import javax.ws.rs.core.Response;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Dashboard;
@@ -113,7 +114,8 @@ public class DashboardController extends BaseController {
             export.put("count", dashboards.size());
             export.put("dashboards", dashboards);
 
-            ObjectMapper mapper = new ObjectMapper();
+            var mapper = new ObjectMapper();
+            mapper.registerModule(new JavaTimeModule());
             mapper.enable(SerializationFeature.INDENT_OUTPUT);
             byte[] jsonBytes = mapper.writeValueAsString(export).getBytes(StandardCharsets.UTF_8);
 
