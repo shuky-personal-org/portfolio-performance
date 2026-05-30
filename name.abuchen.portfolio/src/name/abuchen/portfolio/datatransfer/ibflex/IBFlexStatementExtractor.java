@@ -198,6 +198,7 @@ public class IBFlexStatementExtractor implements Extractor
         private List<Exception> errors = new ArrayList<>();
         private List<Item> results = new ArrayList<>();
         private String accountCurrency = null;
+        private Map<String, BigDecimal> fxRateToBaseByCurrency = new HashMap<>();
 
         /**
          * Builds account information based on the provided XML element. Extracts the currency
@@ -527,11 +528,13 @@ public class IBFlexStatementExtractor implements Extractor
             portfolioTransfer.setType(isOutbound ? PortfolioTransaction.Type.DELIVERY_OUTBOUND
                             : PortfolioTransaction.Type.DELIVERY_INBOUND);
             portfolioTransfer.setDateTime(extractTransferDate(element));
-            portfolioTransfer.setCurrencyCode(asCurrencyCode(element.getAttribute("currency")));
-            portfolioTransfer.setAmount(Math.abs(asAmountOrZero(element.getAttribute("positionAmount"))));
             portfolioTransfer.setShares(shares);
-            portfolioTransfer.setSecurity(this.getOrCreateSecurity(element, true));
+            portfolioTransfer.setSecurity(this.getOrCreateSecurity(element, true, false));
             portfolioTransfer.setNote(extractTransferNote(element, isOutbound));
+
+            Money amount = Money.of(asCurrencyCode(element.getAttribute("currency")),
+                            Math.abs(asAmountOrZero(element.getAttribute("positionAmount"))));
+            setTransferAmount(element, portfolioTransfer, amount);
 
             results.add(new TransactionItem(portfolioTransfer));
         }
@@ -785,6 +788,67 @@ public class IBFlexStatementExtractor implements Extractor
          * @param amount       The monetary amount to set on the transaction.
          * @param addUnit      A flag indicating whether to add a Unit to the transaction.
          */
+        private void rememberFxRate(Element element)
+        {
+            if (element.hasAttribute("fxRateToBase") && !element.getAttribute("fxRateToBase").isEmpty())
+            {
+                String currency = asCurrencyCode(element.getAttribute("currency"));
+                if (currency != null && !currency.isEmpty())
+                    fxRateToBaseByCurrency.put(currency, asExchangeRate(element.getAttribute("fxRateToBase")));
+            }
+        }
+
+        /**
+         * Sets the transfer amount and, when the transfer currency differs from the security
+         * currency, adds a gross-value unit using {@code positionAmountInBase} and cached FX rates.
+         */
+        private void setTransferAmount(Element element, PortfolioTransaction transaction, Money amount)
+        {
+            rememberFxRate(element);
+
+            Security security = transaction.getSecurity();
+            if (security == null || security.getCurrencyCode() == null
+                            || security.getCurrencyCode().equals(amount.getCurrencyCode()))
+            {
+                transaction.setMonetaryAmount(amount);
+                return;
+            }
+
+            String securityCurrency = security.getCurrencyCode();
+            long baseAmountValue = Math.abs(asAmountOrZero(element.getAttribute("positionAmountInBase")));
+
+            transaction.setMonetaryAmount(amount);
+
+            Money grossValue;
+            BigDecimal exchangeRate;
+
+            if (accountCurrency != null && securityCurrency.equals(accountCurrency))
+            {
+                grossValue = Money.of(securityCurrency, baseAmountValue);
+                exchangeRate = BigDecimal.valueOf(grossValue.getAmount()).divide(BigDecimal.valueOf(amount.getAmount()),
+                                10, RoundingMode.HALF_DOWN);
+            }
+            else if (accountCurrency != null && amount.getCurrencyCode().equals(accountCurrency))
+            {
+                BigDecimal securityFxRate = fxRateToBaseByCurrency.get(securityCurrency);
+                if (securityFxRate == null || BigDecimal.ZERO.compareTo(securityFxRate) == 0)
+                    securityFxRate = BigDecimal.ONE;
+
+                grossValue = Money.of(securityCurrency,
+                                BigDecimal.valueOf(baseAmountValue).divide(securityFxRate, Values.MC)
+                                                .setScale(0, RoundingMode.HALF_UP).longValue());
+                exchangeRate = BigDecimal.valueOf(grossValue.getAmount()).divide(
+                                BigDecimal.valueOf(amount.getAmount()), 10, RoundingMode.HALF_DOWN);
+            }
+            else
+            {
+                setAmount(element, transaction, amount);
+                return;
+            }
+
+            transaction.addUnit(new Unit(Unit.Type.GROSS_VALUE, amount, grossValue, exchangeRate));
+        }
+
         private void setAmount(Element element, Transaction transaction, Money amount, boolean addUnit)
         {
             if (accountCurrency != null && !accountCurrency.equals(amount.getCurrencyCode()))
@@ -1059,6 +1123,11 @@ public class IBFlexStatementExtractor implements Extractor
          */
         private Security getOrCreateSecurity(Element element, boolean doCreate)
         {
+            return getOrCreateSecurity(element, doCreate, true);
+        }
+
+        private Security getOrCreateSecurity(Element element, boolean doCreate, boolean allowCrossCurrencyMatch)
+        {
             // Lookup the Exchange Suffix for Yahoo
             Optional<String> tickerSymbol = Optional.ofNullable(element.getAttribute("symbol"));
             String quoteFeed = QuoteFeed.MANUAL;
@@ -1139,7 +1208,7 @@ public class IBFlexStatementExtractor implements Extractor
                     return security;
             }
 
-            if (matchingSecurity != null)
+            if (matchingSecurity != null && allowCrossCurrencyMatch)
                 return matchingSecurity;
 
             if (!doCreate)
