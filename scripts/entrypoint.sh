@@ -14,12 +14,14 @@ echo "=================================================="
 # Ensure workspace directory exists
 WORKSPACE_DIR="${WORKSPACE_DIR:-/app/workspace}"
 PORTFOLIO_DIR="${PORTFOLIO_DIR:-/opt/pp/portfolios}"
+FLEX_REPORTS_DIR="${FLEX_REPORTS_DIR:-/app/out/flex}"
 
 echo "Setting up directories..."
 echo "  Workspace: ${WORKSPACE_DIR}"
 echo "  Portfolios: ${PORTFOLIO_DIR}"
+echo "  Flex reports: ${FLEX_REPORTS_DIR}"
 
-mkdir -p "${WORKSPACE_DIR}" "${PORTFOLIO_DIR}"
+mkdir -p "${WORKSPACE_DIR}" "${PORTFOLIO_DIR}" "${FLEX_REPORTS_DIR}"
 
 echo "Starting as root..."
 echo ""
