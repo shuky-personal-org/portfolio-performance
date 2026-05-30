@@ -7,19 +7,21 @@ import java.time.LocalDateTime;
  */
 public class TransactionMutationDto
 {
-    /** "ACCOUNT" or "PORTFOLIO" */
+    /** "ACCOUNT" or "PORTFOLIO" — used by the general transactions API. */
     private String transactionType;
 
-    /** AccountTransaction.Type or PortfolioTransaction.Type name */
+    /** AccountTransaction.Type or PortfolioTransaction.Type name. */
     private String type;
 
     /** UUID of the owning account or security account (portfolio). */
     private String ownerUuid;
 
+    private String securityUuid;
+    private String securityAccountUuid;
+    private String accountUuid;
     private LocalDateTime dateTime;
     private Double amount;
     private String currencyCode;
-    private String securityUuid;
     private Double shares;
     private String note;
     private String source;
@@ -54,6 +56,36 @@ public class TransactionMutationDto
         this.ownerUuid = ownerUuid;
     }
 
+    public String getSecurityUuid()
+    {
+        return securityUuid;
+    }
+
+    public void setSecurityUuid(String securityUuid)
+    {
+        this.securityUuid = securityUuid;
+    }
+
+    public String getSecurityAccountUuid()
+    {
+        return securityAccountUuid;
+    }
+
+    public void setSecurityAccountUuid(String securityAccountUuid)
+    {
+        this.securityAccountUuid = securityAccountUuid;
+    }
+
+    public String getAccountUuid()
+    {
+        return accountUuid;
+    }
+
+    public void setAccountUuid(String accountUuid)
+    {
+        this.accountUuid = accountUuid;
+    }
+
     public LocalDateTime getDateTime()
     {
         return dateTime;
@@ -82,16 +114,6 @@ public class TransactionMutationDto
     public void setCurrencyCode(String currencyCode)
     {
         this.currencyCode = currencyCode;
-    }
-
-    public String getSecurityUuid()
-    {
-        return securityUuid;
-    }
-
-    public void setSecurityUuid(String securityUuid)
-    {
-        this.securityUuid = securityUuid;
     }
 
     public Double getShares()

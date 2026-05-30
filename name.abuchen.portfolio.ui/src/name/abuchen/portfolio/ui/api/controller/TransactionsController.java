@@ -151,11 +151,12 @@ public class TransactionsController extends BaseController {
                     "Portfolio must be opened first before creating transactions");
             }
 
-            TransactionPair<?> txPair = TransactionManagementService.createTransaction(client, transactionData);
+            TransactionPair<?> pair = TransactionManagementService.createTransaction(client, transactionData);
             client.markDirty();
             portfolioFileService.saveFile(portfolioId);
+            SecurityController.clearCache(portfolioId);
 
-            TransactionDto transactionDto = convertTransactionPairToDto(txPair);
+            TransactionDto transactionDto = convertTransactionPairToDto(pair);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -214,17 +215,16 @@ public class TransactionsController extends BaseController {
                     "Portfolio must be opened first before updating transactions");
             }
 
-            TransactionPair<?> txPair = TransactionManagementService.updateTransaction(client, transactionUuid,
+            TransactionPair<?> pair = TransactionManagementService.updateTransaction(client, transactionUuid,
                 transactionData);
             client.markDirty();
             portfolioFileService.saveFile(portfolioId);
-
-            TransactionDto transactionDto = convertTransactionPairToDto(txPair);
+            SecurityController.clearCache(portfolioId);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("portfolioId", portfolioId);
-            response.put("transaction", transactionDto);
+            response.put("transaction", convertTransactionPairToDto(pair));
             response.put("message", "Transaction updated successfully");
 
             logger.info("Updated transaction {} for portfolio {}", transactionUuid, portfolioId);
@@ -275,17 +275,18 @@ public class TransactionsController extends BaseController {
                     "Portfolio must be opened first before deleting transactions");
             }
 
-            TransactionPair<?> txPair = TransactionManagementService.deleteTransaction(client, transactionUuid);
+            TransactionPair<?> pair = TransactionManagementService.deleteTransaction(client, transactionUuid);
             client.markDirty();
             portfolioFileService.saveFile(portfolioId);
+            SecurityController.clearCache(portfolioId);
 
-            var transaction = txPair.getTransaction();
+            var transaction = pair.getTransaction();
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("portfolioId", portfolioId);
             response.put("transactionUuid", transactionUuid);
-            response.put("transactionType", txPair.getOwner() instanceof name.abuchen.portfolio.model.Account
+            response.put("transactionType", pair.getOwner() instanceof name.abuchen.portfolio.model.Account
                 ? "ACCOUNT" : "PORTFOLIO");
             response.put("type", transaction instanceof AccountTransaction
                 ? ((AccountTransaction) transaction).getType().name()

@@ -31,6 +31,9 @@ import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.security.CapitalGainsRecord;
 import name.abuchen.portfolio.snapshot.security.SecurityPerformanceRecord;
 import name.abuchen.portfolio.ui.api.dto.SecurityDto;
+import name.abuchen.portfolio.ui.api.dto.SecurityMutationDto;
+import name.abuchen.portfolio.ui.api.service.SecurityManagementService;
+import name.abuchen.portfolio.ui.api.service.SecurityManagementService.SecurityDeletionException;
 import name.abuchen.portfolio.ui.api.service.SecurityPerformanceSnapshotCacheService.SecurityPerformanceSnapshotBundle;
 
 /**
@@ -193,11 +196,46 @@ public class SecurityController extends BaseController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response createSecurity(@PathParam("portfolioId") String portfolioId,
-                                   Map<String, Object> securityData) {
-        // TODO: Implement security creation
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Security creation not yet implemented");
+                                   SecurityMutationDto securityData) {
+        try {
+            logger.info("Creating security for portfolio {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before creating securities");
+            }
+
+            Security security = SecurityManagementService.createSecurity(client, securityData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+            clearCache(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("security", convertSecurityToDto(security, client, null, false));
+            response.put("message", "Security created successfully");
+
+            logger.info("Created security {} ({}) for portfolio {}", security.getName(), security.getUUID(), portfolioId);
+
+            return Response.status(Response.Status.CREATED).entity(response).build();
+
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid security creation request for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error creating security for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -215,11 +253,52 @@ public class SecurityController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response updateSecurity(@PathParam("portfolioId") String portfolioId,
                                    @PathParam("securityUuid") String securityUuid,
-                                   Map<String, Object> securityData) {
-        // TODO: Implement security update
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Security update not yet implemented");
+                                   SecurityMutationDto securityData) {
+        try {
+            logger.info("Updating security {} for portfolio {}", securityUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before updating securities");
+            }
+
+            Security security = SecurityManagementService.updateSecurity(client, securityUuid, securityData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+            clearCache(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("security", convertSecurityToDto(security, client, null, false));
+            response.put("message", "Security updated successfully");
+
+            logger.info("Updated security {} ({}) for portfolio {}", security.getName(), securityUuid, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (java.util.NoSuchElementException e) {
+            logger.warn("Security not found: {} in portfolio: {}", securityUuid, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Security not found",
+                e.getMessage());
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid security update request for security {} in portfolio {}: {}",
+                securityUuid, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error updating security {} for portfolio {}: {}",
+                securityUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -235,10 +314,52 @@ public class SecurityController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteSecurity(@PathParam("portfolioId") String portfolioId,
                                    @PathParam("securityUuid") String securityUuid) {
-        // TODO: Implement security deletion
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Security deletion not yet implemented");
+        try {
+            logger.info("Deleting security {} for portfolio {}", securityUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before deleting securities");
+            }
+
+            Security security = SecurityManagementService.deleteSecurity(client, securityUuid);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+            clearCache(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("securityUuid", securityUuid);
+            response.put("securityName", security.getName());
+            response.put("message", "Security deleted successfully");
+
+            logger.info("Deleted security {} ({}) for portfolio {}", security.getName(), securityUuid, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (java.util.NoSuchElementException e) {
+            logger.warn("Security not found: {} in portfolio: {}", securityUuid, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Security not found",
+                e.getMessage());
+        } catch (SecurityDeletionException e) {
+            logger.warn("Cannot delete security {} in portfolio {}: {} transaction(s)",
+                securityUuid, portfolioId, e.getTransactionsCount());
+            return createErrorResponse(Response.Status.CONFLICT,
+                "Security has transactions",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error deleting security {} for portfolio {}: {}",
+                securityUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**

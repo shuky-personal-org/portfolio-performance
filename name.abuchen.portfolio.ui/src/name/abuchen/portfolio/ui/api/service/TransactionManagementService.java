@@ -47,14 +47,19 @@ public final class TransactionManagementService
         Objects.requireNonNull(client, "client");
         requireRequest(request);
 
-        var transactionType = requireTransactionType(request.getTransactionType());
-        var dateTime = requireDateTime(request.getDateTime());
-        var amount = toInternalAmount(requireAmount(request.getAmount()));
+        if (request.getTransactionType() != null && !request.getTransactionType().isBlank())
+        {
+            var transactionType = requireTransactionType(request.getTransactionType());
+            var dateTime = requireDateTime(request.getDateTime());
+            var amount = toInternalAmount(requireAmount(request.getAmount()));
 
-        if ("ACCOUNT".equals(transactionType))
-            return createAccountTransaction(client, request, dateTime, amount);
+            if ("ACCOUNT".equals(transactionType))
+                return createAccountTransaction(client, request, dateTime, amount);
 
-        return createPortfolioTransaction(client, request, dateTime, amount);
+            return createOwnerBasedPortfolioTransaction(client, request, dateTime, amount);
+        }
+
+        return createShareTransaction(client, request);
     }
 
     public static TransactionPair<?> updateTransaction(Client client, String transactionUuid,
@@ -70,7 +75,14 @@ public final class TransactionManagementService
             return updateAccountTransaction(client, existing, accountTransaction, request);
 
         if (transaction instanceof PortfolioTransaction portfolioTransaction)
-            return updatePortfolioTransaction(client, existing, portfolioTransaction, request);
+        {
+            if (request.getTransactionType() != null && !request.getTransactionType().isBlank())
+                return updatePortfolioTransaction(client, existing, portfolioTransaction, request);
+
+            validateShareTransactionRequest(client, request);
+            deleteTransaction(client, transactionUuid);
+            return createShareTransaction(client, request);
+        }
 
         throw new IllegalStateException("Unsupported transaction type");
     }
@@ -114,8 +126,8 @@ public final class TransactionManagementService
         return new TransactionPair<>(account, transaction);
     }
 
-    private static TransactionPair<?> createPortfolioTransaction(Client client, TransactionMutationDto request,
-                    LocalDateTime dateTime, long amount)
+    private static TransactionPair<?> createOwnerBasedPortfolioTransaction(Client client,
+                    TransactionMutationDto request, LocalDateTime dateTime, long amount)
     {
         var portfolio = SecurityAccountManagementService.findSecurityAccount(client,
                         requireOwnerUuid(request.getOwnerUuid()));
@@ -125,10 +137,7 @@ public final class TransactionManagementService
 
         if (type == PortfolioTransaction.Type.BUY || type == PortfolioTransaction.Type.SELL)
         {
-            var account = portfolio.getReferenceAccount();
-            if (account == null)
-                throw new IllegalArgumentException("Security account must have a reference account for buy/sell transactions");
-
+            var account = resolveAccount(client, portfolio, request.getAccountUuid());
             var currencyCode = resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
             var entry = new BuySellEntry(portfolio, account);
             entry.setDate(dateTime);
@@ -163,6 +172,71 @@ public final class TransactionManagementService
         return new TransactionPair<>(portfolio, transaction);
     }
 
+    private static TransactionPair<?> createShareTransaction(Client client, TransactionMutationDto request)
+    {
+        var type = parseShareType(request.getType());
+        var security = SecurityManagementService.findSecurity(client,
+                        requireUuid(request.getSecurityUuid(), "Security UUID"));
+        var portfolio = findSecurityAccount(client,
+                        requireUuid(request.getSecurityAccountUuid(), "Security account UUID"));
+        var dateTime = request.getDateTime() != null ? request.getDateTime() : LocalDateTime.now();
+        var shares = toInternalShares(requirePositive(request.getShares(), "Shares"));
+        var amount = toInternalAmount(requirePositive(request.getAmount(), "Amount"));
+        var note = normalizeNote(request.getNote());
+        var source = normalizeSource(request.getSource());
+
+        if (type == PortfolioTransaction.Type.BUY || type == PortfolioTransaction.Type.SELL)
+            return createBuySellTransaction(client, type, security, portfolio, dateTime, shares, amount, note, source,
+                            request);
+
+        return createDeliveryTransaction(type, security, portfolio, dateTime, shares, amount, note, source, request);
+    }
+
+    private static TransactionPair<?> createBuySellTransaction(Client client, PortfolioTransaction.Type type,
+                    Security security, Portfolio portfolio, LocalDateTime dateTime, long shares, long amount,
+                    String note, String source, TransactionMutationDto request)
+    {
+        var account = resolveAccount(client, portfolio, request.getAccountUuid());
+        var currencyCode = resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
+
+        var entry = new BuySellEntry(portfolio, account);
+        entry.setCurrencyCode(currencyCode);
+        entry.setDate(dateTime);
+        entry.setType(type);
+        entry.setSecurity(security);
+        entry.setShares(shares);
+        entry.setAmount(amount);
+        entry.setNote(note);
+        entry.setSource(source);
+        entry.insert();
+
+        return new TransactionPair<>(portfolio, entry.getPortfolioTransaction());
+    }
+
+    private static TransactionPair<?> createDeliveryTransaction(PortfolioTransaction.Type type, Security security,
+                    Portfolio portfolio, LocalDateTime dateTime, long shares, long amount, String note, String source,
+                    TransactionMutationDto request)
+    {
+        if (portfolio.getReferenceAccount() == null)
+            throw new IllegalArgumentException("Security account must have a reference cash account");
+
+        var currencyCode = resolveCurrencyCode(request.getCurrencyCode(),
+                        portfolio.getReferenceAccount().getCurrencyCode());
+
+        var transaction = new PortfolioTransaction();
+        transaction.setDateTime(dateTime);
+        transaction.setType(type);
+        transaction.setSecurity(security);
+        transaction.setShares(shares);
+        transaction.setAmount(amount);
+        transaction.setCurrencyCode(currencyCode);
+        transaction.setNote(note);
+        transaction.setSource(source);
+
+        portfolio.addTransaction(transaction);
+        return new TransactionPair<>(portfolio, transaction);
+    }
+
     private static TransactionPair<?> updateAccountTransaction(Client client, TransactionPair<?> existing,
                     AccountTransaction transaction, TransactionMutationDto request)
     {
@@ -172,7 +246,7 @@ public final class TransactionManagementService
             transaction.setDateTime(request.getDateTime());
 
         if (request.getAmount() != null)
-            transaction.setAmount(toInternalAmount(request.getAmount()));
+            transaction.setAmount(toInternalAmount(requireAmount(request.getAmount())));
 
         if (request.getCurrencyCode() != null)
         {
@@ -215,7 +289,7 @@ public final class TransactionManagementService
                 buySellEntry.setShares(toInternalShares(request.getShares()));
 
             if (request.getAmount() != null)
-                buySellEntry.setAmount(toInternalAmount(request.getAmount()));
+                buySellEntry.setAmount(toInternalAmount(requireAmount(request.getAmount())));
 
             if (request.getCurrencyCode() != null)
             {
@@ -243,7 +317,7 @@ public final class TransactionManagementService
             transaction.setShares(toInternalShares(request.getShares()));
 
         if (request.getAmount() != null)
-            transaction.setAmount(toInternalAmount(request.getAmount()));
+            transaction.setAmount(toInternalAmount(requireAmount(request.getAmount())));
 
         if (request.getCurrencyCode() != null)
             transaction.setCurrencyCode(resolveCurrencyCode(request.getCurrencyCode(), transaction.getCurrencyCode()));
@@ -255,6 +329,49 @@ public final class TransactionManagementService
             transaction.setSource(normalizeSource(request.getSource()));
 
         return existing;
+    }
+
+    private static void validateShareTransactionRequest(Client client, TransactionMutationDto request)
+    {
+        var type = parseShareType(request.getType());
+        SecurityManagementService.findSecurity(client, requireUuid(request.getSecurityUuid(), "Security UUID"));
+        var portfolio = findSecurityAccount(client,
+                        requireUuid(request.getSecurityAccountUuid(), "Security account UUID"));
+        requirePositive(request.getShares(), "Shares");
+        requirePositive(request.getAmount(), "Amount");
+
+        if (type == PortfolioTransaction.Type.BUY || type == PortfolioTransaction.Type.SELL)
+        {
+            var account = resolveAccount(client, portfolio, request.getAccountUuid());
+            resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
+        }
+        else
+        {
+            if (portfolio.getReferenceAccount() == null)
+                throw new IllegalArgumentException("Security account must have a reference cash account");
+            resolveCurrencyCode(request.getCurrencyCode(), portfolio.getReferenceAccount().getCurrencyCode());
+        }
+    }
+
+    private static Account resolveAccount(Client client, Portfolio portfolio, String accountUuid)
+    {
+        if (accountUuid != null && !accountUuid.isBlank())
+            return AccountManagementService.findAccount(client, accountUuid);
+
+        var referenceAccount = portfolio.getReferenceAccount();
+        if (referenceAccount == null)
+            throw new IllegalArgumentException("Security account must have a reference cash account");
+
+        return referenceAccount;
+    }
+
+    private static Portfolio findSecurityAccount(Client client, String securityAccountUuid)
+    {
+        return client.getPortfolios().stream()
+                        .filter(portfolio -> securityAccountUuid.equals(portfolio.getUUID()))
+                        .findFirst()
+                        .orElseThrow(() -> new NoSuchElementException(
+                                        "Security account with UUID " + securityAccountUuid + " not found in portfolio"));
     }
 
     private static void applyOptionalFields(Transaction transaction, TransactionMutationDto request, long shares)
@@ -323,6 +440,30 @@ public final class TransactionManagementService
         }
     }
 
+    private static PortfolioTransaction.Type parseShareType(String type)
+    {
+        if (type == null || type.isBlank())
+            throw new IllegalArgumentException("Transaction type is required");
+
+        try
+        {
+            var parsedType = PortfolioTransaction.Type.valueOf(type.trim().toUpperCase(Locale.ROOT));
+            if (parsedType == PortfolioTransaction.Type.TRANSFER_IN
+                            || parsedType == PortfolioTransaction.Type.TRANSFER_OUT)
+            {
+                throw new IllegalArgumentException(
+                                "Transfer transactions are not supported via this API. Use BUY, SELL, DELIVERY_INBOUND, or DELIVERY_OUTBOUND.");
+            }
+            return parsedType;
+        }
+        catch (IllegalArgumentException e)
+        {
+            if (e.getMessage() != null && e.getMessage().startsWith("Transfer transactions"))
+                throw e;
+            throw new IllegalArgumentException("Unsupported transaction type: " + type);
+        }
+    }
+
     private static Security resolveSecurity(Client client, String securityUuid, boolean required)
     {
         if (securityUuid == null || securityUuid.isBlank())
@@ -351,14 +492,14 @@ public final class TransactionManagementService
         return currencyCode;
     }
 
-    private static long toInternalAmount(double value)
+    private static long toInternalAmount(double amount)
     {
-        if (!Double.isFinite(value) || value <= 0)
+        if (!Double.isFinite(amount) || amount <= 0)
             throw new IllegalArgumentException("Amount must be a positive finite number");
 
-        double internalAmount = value * Values.Amount.divider();
-        if (internalAmount > Long.MAX_VALUE)
-            throw new IllegalArgumentException("Amount is outside the supported range");
+        double internalAmount = amount * Values.Amount.divider();
+        if (internalAmount > Long.MAX_VALUE || internalAmount < Long.MIN_VALUE)
+            throw new IllegalArgumentException("Amount value is outside the supported range");
 
         return Math.round(internalAmount);
     }
@@ -426,6 +567,22 @@ public final class TransactionManagementService
     {
         if (request == null)
             throw new IllegalArgumentException("Request body is required");
+    }
+
+    private static String requireUuid(String uuid, String label)
+    {
+        if (uuid == null || uuid.isBlank())
+            throw new IllegalArgumentException(label + " is required");
+
+        return uuid.trim();
+    }
+
+    private static double requirePositive(Double value, String label)
+    {
+        if (value == null || !Double.isFinite(value) || value <= 0)
+            throw new IllegalArgumentException(label + " must be a positive number");
+
+        return value.doubleValue();
     }
 
     private static String normalizeNote(String note)
