@@ -1,9 +1,14 @@
 package name.abuchen.portfolio.ui.api.controller;
 
+import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -72,6 +77,62 @@ public class DashboardController extends BaseController {
                 portfolioId, e.getMessage(), e);
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, 
                 "Internal server error", 
+                e.getMessage());
+        }
+    }
+
+    /**
+     * Download all dashboard configurations for a portfolio as a JSON file.
+     *
+     * @param portfolioId The portfolio ID
+     * @return JSON attachment containing dashboard configurations
+     */
+    @GET
+    @Path("/download")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response downloadDashboardsConfiguration(@PathParam("portfolioId") String portfolioId) {
+        try {
+            logger.info("Downloading dashboard configuration for portfolio: {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before downloading dashboard configuration");
+            }
+
+            List<DashboardDto> dashboards = client.getDashboards()
+                .map(DashboardConverter::toDto)
+                .collect(Collectors.toList());
+
+            Map<String, Object> export = new LinkedHashMap<>();
+            export.put("portfolioId", portfolioId);
+            export.put("exportedAt", Instant.now().toString());
+            export.put("count", dashboards.size());
+            export.put("dashboards", dashboards);
+
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.registerModule(new JavaTimeModule());
+            byte[] jsonBytes = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(export);
+
+            String filename = sanitizeAttachmentFilename(portfolioId + "-dashboards.json");
+
+            logger.info("Returning dashboard configuration download for portfolio {} ({} dashboards)",
+                portfolioId, dashboards.size());
+
+            return Response.ok(jsonBytes)
+                .type(MediaType.APPLICATION_JSON)
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                .header("X-Content-Type-Options", "nosniff")
+                .build();
+
+        } catch (Exception e) {
+            logger.error("Unexpected error downloading dashboard configuration for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
                 e.getMessage());
         }
     }
@@ -195,6 +256,10 @@ public class DashboardController extends BaseController {
         return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
             "Not implemented", 
             "Dashboard deletion not yet implemented");
+    }
+
+    private String sanitizeAttachmentFilename(String filename) {
+        return filename.replace("\\", "\\\\").replace("\"", "\\\"");
     }
     
 }
