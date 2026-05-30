@@ -799,10 +799,6 @@ public class PortfolioController extends BaseController {
 
         return null;
     }
-
-    private String sanitizeAttachmentFilename(String filename) {
-        return filename.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
     
     /**
      * Helper method to create MoneyValueDto from Money.

@@ -257,10 +257,6 @@ public class DashboardController extends BaseController {
             "Not implemented", 
             "Dashboard deletion not yet implemented");
     }
-
-    private String sanitizeAttachmentFilename(String filename) {
-        return filename.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
     
 }
 

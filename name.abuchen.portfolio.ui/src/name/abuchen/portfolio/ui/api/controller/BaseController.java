@@ -61,5 +61,16 @@ public abstract class BaseController {
         errorResponse.put("message", message);
         return Response.status(428).entity(errorResponse).build();
     }
+
+    /**
+     * Sanitize a filename for use in Content-Disposition header.
+     * Escapes backslashes and double quotes to prevent header injection.
+     * 
+     * @param filename The filename to sanitize
+     * @return The sanitized filename safe for use in HTTP headers
+     */
+    protected String sanitizeAttachmentFilename(String filename) {
+        return filename.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
 }
 
