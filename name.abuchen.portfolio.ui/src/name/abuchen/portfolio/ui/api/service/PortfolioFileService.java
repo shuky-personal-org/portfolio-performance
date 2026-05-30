@@ -3,6 +3,7 @@ package name.abuchen.portfolio.ui.api.service;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,6 +35,7 @@ import name.abuchen.portfolio.model.ConfigurationSet.WellKnownConfigurationSets;
 import name.abuchen.portfolio.model.SaveFlag;
 import name.abuchen.portfolio.money.CurrencyConverter;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
+import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.ExchangeRate;
 import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.snapshot.ReportingPeriod;
@@ -225,6 +227,50 @@ public class PortfolioFileService {
         return fileInfo;
     }
     
+    /**
+     * Sets base currency on file info from cache or a lightweight read of the file header.
+     */
+    private void enrichBaseCurrencyFromFile(PortfolioFileInfo fileInfo, File file) {
+        Client cached = clientCache.get(fileInfo.getId());
+        if (cached != null) {
+            fileInfo.setBaseCurrency(cached.getBaseCurrency());
+            return;
+        }
+
+        // Only attempt to read XML files - binary .portfolio files are compressed
+        // and cannot be read as text
+        String fileName = file.getName().toLowerCase();
+        if (!fileName.endsWith(XML_EXTENSION)) {
+            return;
+        }
+
+        // Read only the first few KB to find the baseCurrency tag near the header
+        int bufferSize = 4096;
+        try (var reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
+            char[] buffer = new char[bufferSize];
+            int charsRead = reader.read(buffer, 0, bufferSize);
+            if (charsRead <= 0)
+                return;
+
+            String content = new String(buffer, 0, charsRead);
+            String openTag = "<baseCurrency>";
+            int start = content.indexOf(openTag);
+            if (start < 0)
+                return;
+
+            int valueStart = start + openTag.length();
+            int end = content.indexOf("</baseCurrency>", valueStart);
+            if (end <= valueStart)
+                return;
+
+            String currency = content.substring(valueStart, end).trim();
+            if (!currency.isEmpty())
+                fileInfo.setBaseCurrency(currency);
+        } catch (IOException e) {
+            logger.debug("Could not read base currency from {}", file.getName(), e);
+        }
+    }
+
     /**
      * Populates the file info with client-specific data.
      * 
@@ -500,6 +546,7 @@ public class PortfolioFileService {
                          String relativePath = portfolioDirectory.relativize(path).toString();
                          
                          PortfolioFileInfo fileInfo = createBasicFileInfo(file, relativePath, generateFileId(relativePath));
+                         enrichBaseCurrencyFromFile(fileInfo, file);
                          
                          files.add(fileInfo);
                          
@@ -595,6 +642,56 @@ public class PortfolioFileService {
         }
 
         return createBasicFileInfo(targetPath.toFile(), relativePath, renamedFileId);
+    }
+
+    /**
+     * Update the base (reporting) currency of a portfolio and persist the change.
+     *
+     * @param fileId The portfolio file ID
+     * @param currencyCode ISO 4217 currency code
+     * @param password Optional password for encrypted files when not already cached
+     * @return Updated portfolio file information
+     * @throws IOException if the portfolio cannot be loaded or saved
+     */
+    public PortfolioFileInfo updateBaseCurrency(String fileId, String currencyCode, char[] password) throws IOException {
+        if (currencyCode == null || currencyCode.trim().isEmpty()) {
+            throw new IllegalArgumentException("Currency code is required");
+        }
+
+        String normalizedCurrency = currencyCode.trim().toUpperCase();
+        if (!CurrencyUnit.containsCurrencyCode(normalizedCurrency)) {
+            throw new IllegalArgumentException("Unsupported currency code: " + normalizedCurrency);
+        }
+
+        String relativePath = findFileById(fileId);
+        File file = portfolioDirectory.resolve(relativePath).toFile();
+
+        Client client = getPortfolio(fileId);
+        if (client == null) {
+            validateFileAccess(file, relativePath, password);
+            client = loadClient(file, fileId, relativePath, password);
+        }
+
+        String oldCurrency = client.getBaseCurrency();
+        boolean changed = !normalizedCurrency.equals(oldCurrency);
+        if (changed) {
+            client.setBaseCurrency(normalizedCurrency);
+            client.markDirty();
+            try {
+                saveFile(fileId);
+            } catch (IOException e) {
+                // Restore old currency to keep cache consistent with file on disk
+                client.setBaseCurrency(oldCurrency);
+                throw e;
+            }
+            logger.info("Updated base currency for portfolio {} to {}", fileId, normalizedCurrency);
+        } else {
+            logger.info("Base currency for portfolio {} already set to {}", fileId, normalizedCurrency);
+        }
+
+        PortfolioFileInfo fileInfo = createBasicFileInfo(file, relativePath, fileId);
+        populateClientData(fileInfo, client, file);
+        return fileInfo;
     }
 
     /**
