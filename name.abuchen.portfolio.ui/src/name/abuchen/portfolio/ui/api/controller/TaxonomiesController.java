@@ -250,10 +250,19 @@ public class TaxonomiesController extends BaseController {
             return Response.ok(response).build();
 
         } catch (java.util.NoSuchElementException e) {
-            logger.warn("Taxonomy not found: {} in portfolio: {}", taxonomyId, portfolioId);
-            return createErrorResponse(Response.Status.NOT_FOUND,
-                "Taxonomy not found",
-                e.getMessage());
+            String message = e.getMessage();
+            if (message != null && message.startsWith("Taxonomy")) {
+                logger.warn("Taxonomy not found: {} in portfolio: {}", taxonomyId, portfolioId);
+                return createErrorResponse(Response.Status.NOT_FOUND,
+                    "Taxonomy not found",
+                    e.getMessage());
+            } else {
+                logger.warn("Invalid reference in taxonomy update request for taxonomy {} in portfolio {}: {}",
+                    taxonomyId, portfolioId, e.getMessage());
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "Invalid reference",
+                    e.getMessage());
+            }
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid taxonomy update request for taxonomy {} in portfolio {}: {}",
                 taxonomyId, portfolioId, e.getMessage());
