@@ -134,17 +134,14 @@ public final class SecurityManagementService
     private static void applyPriceUpdates(Security security, SecurityPriceUpdatesDto request)
     {
         security.setFeed(requireValidFeedId(request.getFeed()));
+        security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
 
-        if (request.getFeedURL() != null)
-            security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
+        var latestFeed = normalizeOptionalString(request.getLatestFeed());
+        security.setLatestFeed(latestFeed);
 
-        if (request.getLatestFeed() != null)
-        {
-            var latestFeed = normalizeOptionalString(request.getLatestFeed());
-            security.setLatestFeed(latestFeed);
-        }
-
-        if (request.getLatestFeedURL() != null)
+        if (latestFeed == null)
+            security.setLatestFeedURL(null);
+        else
             security.setLatestFeedURL(normalizeOptionalString(request.getLatestFeedURL()));
     }
 
