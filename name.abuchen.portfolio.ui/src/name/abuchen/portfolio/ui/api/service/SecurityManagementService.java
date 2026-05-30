@@ -137,7 +137,7 @@ public final class SecurityManagementService
         security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
 
         var latestFeed = normalizeOptionalString(request.getLatestFeed());
-        security.setLatestFeed(latestFeed);
+        security.setLatestFeed(latestFeed != null ? requireValidFeedId(latestFeed) : null);
 
         if (latestFeed == null)
             security.setLatestFeedURL(null);
@@ -189,8 +189,10 @@ public final class SecurityManagementService
         if (request.getFeedURL() != null)
             security.setFeedURL(normalizeOptionalString(request.getFeedURL()));
 
-        if (request.getLatestFeed() != null)
-            security.setLatestFeed(normalizeOptionalString(request.getLatestFeed()));
+        if (request.getLatestFeed() != null && !request.getLatestFeed().isBlank())
+            security.setLatestFeed(requireValidFeedId(request.getLatestFeed()));
+        else if (request.getLatestFeed() != null)
+            security.setLatestFeed(null);
 
         if (request.getLatestFeedURL() != null)
             security.setLatestFeedURL(normalizeOptionalString(request.getLatestFeedURL()));
