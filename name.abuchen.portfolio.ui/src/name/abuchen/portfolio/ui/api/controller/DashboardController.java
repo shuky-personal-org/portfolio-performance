@@ -3,6 +3,7 @@ package name.abuchen.portfolio.ui.api.controller;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,15 +51,15 @@ public class DashboardController extends BaseController {
         try {
             logger.info("Getting all dashboards for portfolio: {}", portfolioId);
             
-            if (portfolioFileService.getPortfolio(portfolioId) == null) {
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+            if (client == null) {
                 logger.warn("No cached client found for portfolio: {}", portfolioId);
                 return createPreconditionRequiredResponse(
                     "PORTFOLIO_NOT_LOADED", 
                     "Portfolio must be opened first before accessing dashboards");
             }
             
-            // Return only the hard-coded system dashboard; ignore portfolio-specific dashboards
-            List<DashboardDto> dashboards = List.of(SystemDashboard.toDto());
+            List<DashboardDto> dashboards = listDashboardsForPortfolio(client);
             
             // Create response
             Map<String, Object> response = new HashMap<>();
@@ -66,7 +67,7 @@ public class DashboardController extends BaseController {
             response.put("count", dashboards.size());
             response.put("dashboards", dashboards);
             
-            logger.info("Returning system dashboard for portfolio {}", portfolioId);
+            logger.info("Returning {} dashboards (including Main) for portfolio {}", dashboards.size(), portfolioId);
             
             return Response.ok(response).build();
             
@@ -92,14 +93,15 @@ public class DashboardController extends BaseController {
         try {
             logger.info("Downloading dashboard configurations for portfolio: {}", portfolioId);
 
-            if (portfolioFileService.getPortfolio(portfolioId) == null) {
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+            if (client == null) {
                 logger.warn("No cached client found for portfolio: {}", portfolioId);
                 return createPreconditionRequiredResponse(
                     "PORTFOLIO_NOT_LOADED",
                     "Portfolio must be opened first before downloading dashboard configurations");
             }
 
-            List<DashboardDto> dashboards = List.of(SystemDashboard.toDto());
+            List<DashboardDto> dashboards = listPortfolioDashboardsForDownload(client);
 
             Map<String, Object> export = new HashMap<>();
             export.put("portfolioId", portfolioId);
@@ -265,6 +267,25 @@ public class DashboardController extends BaseController {
         return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
             "Not implemented", 
             "Dashboard deletion not yet implemented");
+    }
+
+    private List<DashboardDto> listDashboardsForPortfolio(Client client)
+    {
+        List<DashboardDto> dashboards = new ArrayList<>();
+        dashboards.add(SystemDashboard.toDto());
+        client.getDashboards()
+            .filter(d -> !SystemDashboard.isSystemDashboard(d.getId()))
+            .map(DashboardConverter::toDto)
+            .forEach(dashboards::add);
+        return dashboards;
+    }
+
+    private List<DashboardDto> listPortfolioDashboardsForDownload(Client client)
+    {
+        return client.getDashboards()
+            .filter(d -> !SystemDashboard.isSystemDashboard(d.getId()))
+            .map(DashboardConverter::toDto)
+            .collect(Collectors.toList());
     }
 
     private String buildDashboardsDownloadFilename(String portfolioId) throws IOException {
