@@ -4,7 +4,9 @@ import java.util.Locale;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
+import name.abuchen.portfolio.model.AttributeType;
 import name.abuchen.portfolio.model.Client;
+import name.abuchen.portfolio.model.Portfolio;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.online.Factory;
@@ -14,6 +16,8 @@ import name.abuchen.portfolio.ui.api.dto.SecurityPriceUpdatesDto;
 
 public final class SecurityManagementService
 {
+    static final String DEFAULT_SECURITY_ACCOUNT_ATTRIBUTE_ID = "pp-web-default-security-account";
+
     public static final class SecurityDeletionException extends IllegalStateException
     {
         private static final long serialVersionUID = 1L;
@@ -47,6 +51,7 @@ public final class SecurityManagementService
         applyOptionalFields(security, request, true);
         security.setFeed(QuoteFeed.MANUAL);
         applyFeedFieldsFromMutation(security, request);
+        applySecurityAccountFromMutation(client, security, request);
 
         client.addSecurity(security);
         return security;
@@ -75,6 +80,7 @@ public final class SecurityManagementService
 
         applyOptionalFields(security, request, false);
         applyFeedFieldsFromMutation(security, request);
+        applySecurityAccountFromMutation(client, security, request);
 
         return security;
     }
@@ -119,6 +125,72 @@ public final class SecurityManagementService
                         .findFirst() //
                         .orElseThrow(() -> new NoSuchElementException(
                                         "Security with UUID " + securityUuid + " not found in portfolio"));
+    }
+
+    public static String resolveSecurityAccountUuid(Security security, Client client)
+    {
+        Objects.requireNonNull(security, "security");
+        Objects.requireNonNull(client, "client");
+
+        var attributeValue = readDefaultSecurityAccountUuid(security, client);
+        if (attributeValue != null)
+            return attributeValue;
+
+        return client.getPortfolios().stream() //
+                        .filter(portfolio -> portfolio.getTransactions().stream()
+                                        .anyMatch(transaction -> security.equals(transaction.getSecurity()))) //
+                        .map(Portfolio::getUUID) //
+                        .findFirst() //
+                        .orElse(null);
+    }
+
+    private static void applySecurityAccountFromMutation(Client client, Security security,
+                    SecurityMutationDto request)
+    {
+        if (request.getSecurityAccountUuid() == null)
+            return;
+
+        var attributeType = ensureDefaultSecurityAccountAttributeType(client);
+        var normalizedUuid = normalizeOptionalString(request.getSecurityAccountUuid());
+
+        if (normalizedUuid == null)
+        {
+            security.getAttributes().remove(attributeType);
+            return;
+        }
+
+        SecurityAccountManagementService.findSecurityAccount(client, normalizedUuid);
+        security.getAttributes().put(attributeType, normalizedUuid);
+    }
+
+    private static String readDefaultSecurityAccountUuid(Security security, Client client)
+    {
+        return client.getSettings().getAttributeTypes() //
+                        .filter(attributeType -> DEFAULT_SECURITY_ACCOUNT_ATTRIBUTE_ID
+                                        .equals(attributeType.getId())) //
+                        .findFirst() //
+                        .map(attributeType -> security.getAttributes().get(attributeType)) //
+                        .filter(String.class::isInstance) //
+                        .map(String.class::cast) //
+                        .orElse(null);
+    }
+
+    private static AttributeType ensureDefaultSecurityAccountAttributeType(Client client)
+    {
+        return client.getSettings().getAttributeTypes() //
+                        .filter(attributeType -> DEFAULT_SECURITY_ACCOUNT_ATTRIBUTE_ID
+                                        .equals(attributeType.getId())) //
+                        .findFirst() //
+                        .orElseGet(() -> {
+                            var attributeType = new AttributeType(DEFAULT_SECURITY_ACCOUNT_ATTRIBUTE_ID);
+                            attributeType.setName("Default Security Account");
+                            attributeType.setColumnLabel("Default Security Account");
+                            attributeType.setTarget(Security.class);
+                            attributeType.setType(String.class);
+                            attributeType.setConverter(AttributeType.StringConverter.class);
+                            client.getSettings().addAttributeType(attributeType);
+                            return attributeType;
+                        });
     }
 
     public static SecurityPriceUpdatesDto toPriceUpdatesDto(Security security)

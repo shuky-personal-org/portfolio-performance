@@ -38,6 +38,7 @@ public class SecurityDto {
     private Long unrealizedGainsDaily;
     private Long unrealizedGainsDailySecurityCurrency;
     private Long totalEarnings;
+    private String securityAccountUuid;
     
     // Constructors
     public SecurityDto() {}
@@ -270,6 +271,14 @@ public class SecurityDto {
     
     public void setTotalEarnings(Long totalEarnings) {
         this.totalEarnings = totalEarnings;
+    }
+
+    public String getSecurityAccountUuid() {
+        return securityAccountUuid;
+    }
+
+    public void setSecurityAccountUuid(String securityAccountUuid) {
+        this.securityAccountUuid = securityAccountUuid;
     }
 }
 

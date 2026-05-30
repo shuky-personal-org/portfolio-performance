@@ -17,6 +17,7 @@ public class SecurityMutationDto
     private String feedURL;
     private String latestFeed;
     private String latestFeedURL;
+    private String securityAccountUuid;
 
     public String getName()
     {
@@ -136,5 +137,15 @@ public class SecurityMutationDto
     public void setLatestFeedURL(String latestFeedURL)
     {
         this.latestFeedURL = latestFeedURL;
+    }
+
+    public String getSecurityAccountUuid()
+    {
+        return securityAccountUuid;
+    }
+
+    public void setSecurityAccountUuid(String securityAccountUuid)
+    {
+        this.securityAccountUuid = securityAccountUuid;
     }
 }

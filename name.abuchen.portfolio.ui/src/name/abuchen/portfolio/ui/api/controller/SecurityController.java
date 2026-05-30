@@ -538,6 +538,7 @@ public class SecurityController extends BaseController {
         dto.setLatestFeedURL(security.getLatestFeedURL());
         dto.setPricesCount(security.getPrices().size());
         dto.setUpdatedAt(security.getUpdatedAt());
+        dto.setSecurityAccountUuid(SecurityManagementService.resolveSecurityAccountUuid(security, client));
         
         // Set the last price
         try {

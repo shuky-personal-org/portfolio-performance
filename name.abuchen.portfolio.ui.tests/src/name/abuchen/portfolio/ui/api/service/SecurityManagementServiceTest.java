@@ -6,7 +6,9 @@ import static org.hamcrest.Matchers.nullValue;
 
 import org.junit.Test;
 
+import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.Client;
+import name.abuchen.portfolio.model.Portfolio;
 import name.abuchen.portfolio.model.PortfolioTransaction;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.money.CurrencyUnit;
@@ -150,5 +152,70 @@ public class SecurityManagementServiceTest
         portfolio.addTransaction(transaction);
 
         SecurityManagementService.deleteSecurity(client, security.getUUID());
+    }
+
+    @Test
+    public void storesDefaultSecurityAccountOnCreate()
+    {
+        var client = new Client();
+        var portfolio = new Portfolio();
+        portfolio.setName("Broker Depot");
+        portfolio.setReferenceAccount(new Account("Cash"));
+        client.addPortfolio(portfolio);
+
+        var request = new SecurityMutationDto();
+        request.setName("Apple Inc.");
+        request.setSecurityAccountUuid(portfolio.getUUID());
+
+        var security = SecurityManagementService.createSecurity(client, request);
+
+        assertThat(SecurityManagementService.resolveSecurityAccountUuid(security, client), is(portfolio.getUUID()));
+    }
+
+    @Test
+    public void updatesDefaultSecurityAccount()
+    {
+        var client = new Client();
+        var firstPortfolio = new Portfolio();
+        firstPortfolio.setName("Depot A");
+        firstPortfolio.setReferenceAccount(new Account("Cash A"));
+        var secondPortfolio = new Portfolio();
+        secondPortfolio.setName("Depot B");
+        secondPortfolio.setReferenceAccount(new Account("Cash B"));
+        client.addPortfolio(firstPortfolio);
+        client.addPortfolio(secondPortfolio);
+
+        var security = new Security("Apple", CurrencyUnit.EUR);
+        client.addSecurity(security);
+
+        var request = new SecurityMutationDto();
+        request.setSecurityAccountUuid(secondPortfolio.getUUID());
+
+        SecurityManagementService.updateSecurity(client, security.getUUID(), request);
+
+        assertThat(SecurityManagementService.resolveSecurityAccountUuid(security, client),
+                        is(secondPortfolio.getUUID()));
+    }
+
+    @Test
+    public void resolvesSecurityAccountFromTransactionsWhenAttributeMissing()
+    {
+        var client = new Client();
+        var security = new Security("Apple", CurrencyUnit.EUR);
+        var portfolio = new Portfolio();
+        portfolio.setName("Broker Depot");
+        portfolio.setReferenceAccount(new Account("Cash"));
+        client.addSecurity(security);
+        client.addPortfolio(portfolio);
+
+        var transaction = new PortfolioTransaction();
+        transaction.setSecurity(security);
+        transaction.setType(PortfolioTransaction.Type.DELIVERY_INBOUND);
+        transaction.setShares(10_000_000L);
+        transaction.setAmount(1_000_00L);
+        transaction.setCurrencyCode(CurrencyUnit.EUR);
+        portfolio.addTransaction(transaction);
+
+        assertThat(SecurityManagementService.resolveSecurityAccountUuid(security, client), is(portfolio.getUUID()));
     }
 }
