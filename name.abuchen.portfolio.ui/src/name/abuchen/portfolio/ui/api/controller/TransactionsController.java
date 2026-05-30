@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -22,6 +23,8 @@ import name.abuchen.portfolio.model.PortfolioTransaction;
 import name.abuchen.portfolio.model.TransactionPair;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.ui.api.dto.TransactionDto;
+import name.abuchen.portfolio.ui.api.dto.TransactionMutationDto;
+import name.abuchen.portfolio.ui.api.service.TransactionManagementService;
 
 /**
  * REST Controller for transaction operations.
@@ -149,11 +152,51 @@ public class TransactionsController extends BaseController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response createTransaction(@PathParam("portfolioId") String portfolioId,
-                                      Map<String, Object> transactionData) {
-        // TODO: Implement transaction creation
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Transaction creation not yet implemented");
+                                      TransactionMutationDto transactionData) {
+        try {
+            logger.info("Creating transaction for portfolio {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before creating transactions");
+            }
+
+            TransactionPair<?> pair = TransactionManagementService.createTransaction(client, transactionData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+            SecurityController.clearCache(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("transaction", convertTransactionPairToDto(pair));
+            response.put("message", "Transaction created successfully");
+
+            logger.info("Created transaction {} for portfolio {}", pair.getTransaction().getUUID(), portfolioId);
+
+            return Response.status(Response.Status.CREATED).entity(response).build();
+
+        } catch (NoSuchElementException e) {
+            logger.warn("Entity not found while creating transaction for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Entity not found",
+                e.getMessage());
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid transaction creation request for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error creating transaction for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -171,11 +214,53 @@ public class TransactionsController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response updateTransaction(@PathParam("portfolioId") String portfolioId,
                                       @PathParam("transactionUuid") String transactionUuid,
-                                      Map<String, Object> transactionData) {
-        // TODO: Implement transaction update
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Transaction update not yet implemented");
+                                      TransactionMutationDto transactionData) {
+        try {
+            logger.info("Updating transaction {} for portfolio {}", transactionUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before updating transactions");
+            }
+
+            TransactionPair<?> pair = TransactionManagementService.updateTransaction(client, transactionUuid,
+                            transactionData);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+            SecurityController.clearCache(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("transaction", convertTransactionPairToDto(pair));
+            response.put("message", "Transaction updated successfully");
+
+            logger.info("Updated transaction {} for portfolio {}", transactionUuid, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (NoSuchElementException e) {
+            logger.warn("Transaction not found: {} in portfolio: {}", transactionUuid, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Transaction not found",
+                e.getMessage());
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid transaction update request for transaction {} in portfolio {}: {}",
+                transactionUuid, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error updating transaction {} for portfolio {}: {}",
+                transactionUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
@@ -191,10 +276,45 @@ public class TransactionsController extends BaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteTransaction(@PathParam("portfolioId") String portfolioId,
                                       @PathParam("transactionUuid") String transactionUuid) {
-        // TODO: Implement transaction deletion
-        return createErrorResponse(Response.Status.NOT_IMPLEMENTED, 
-            "Not implemented", 
-            "Transaction deletion not yet implemented");
+        try {
+            logger.info("Deleting transaction {} for portfolio {}", transactionUuid, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before deleting transactions");
+            }
+
+            TransactionPair<?> pair = TransactionManagementService.deleteTransaction(client, transactionUuid);
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+            SecurityController.clearCache(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("transactionUuid", transactionUuid);
+            response.put("message", "Transaction deleted successfully");
+
+            logger.info("Deleted transaction {} for portfolio {}", transactionUuid, portfolioId);
+
+            return Response.ok(response).build();
+
+        } catch (NoSuchElementException e) {
+            logger.warn("Transaction not found: {} in portfolio: {}", transactionUuid, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Transaction not found",
+                e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error deleting transaction {} for portfolio {}: {}",
+                transactionUuid, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
     }
     
     /**
