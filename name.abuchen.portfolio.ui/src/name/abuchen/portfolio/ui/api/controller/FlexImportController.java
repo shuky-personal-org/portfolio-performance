@@ -138,7 +138,7 @@ public class FlexImportController extends BaseController
             if (!Files.exists(resolvedPath))
             {
                 logger.warn("Flex report file not found: {} (resolved: {})", filePathValue, resolvedPath);
-                return FileValidationResult.error(createErrorResponse(Response.Status.NOT_FOUND, "FILE_NOT_FOUND",
+                return FileValidationResult.error(createErrorResponse(Response.Status.BAD_REQUEST, "FILE_NOT_FOUND",
                                 "File not found: " + filePathValue));
             }
 
