@@ -1,12 +1,10 @@
 package name.abuchen.portfolio.ui.api.service;
 
-import java.util.Locale;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
 import name.abuchen.portfolio.model.Account;
 import name.abuchen.portfolio.model.Client;
-import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.ui.api.dto.AccountMutationDto;
 
 public final class AccountManagementService
@@ -40,8 +38,8 @@ public final class AccountManagementService
 
         var account = new Account();
         account.setName(requireName(request.getName()));
-        account.setCurrencyCode(resolveCurrencyCode(request.getCurrencyCode(), client.getBaseCurrency()));
-        account.setNote(normalizeNote(request.getNote()));
+        account.setCurrencyCode(ServiceUtils.resolveCurrencyCode(request.getCurrencyCode(), client.getBaseCurrency()));
+        account.setNote(ServiceUtils.normalizeNote(request.getNote()));
         account.setRetired(Boolean.TRUE.equals(request.getRetired()));
 
         client.addAccount(account);
@@ -56,7 +54,7 @@ public final class AccountManagementService
         var account = findAccount(client, accountUuid);
         var name = request.getName() != null ? requireName(request.getName()) : null;
         var currencyCode = request.getCurrencyCode() != null
-                        ? resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode())
+                        ? ServiceUtils.resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode())
                         : null;
 
         if (currencyCode != null && !account.getCurrencyCode().equals(currencyCode) && !account.getTransactions().isEmpty())
@@ -69,7 +67,7 @@ public final class AccountManagementService
             account.setCurrencyCode(currencyCode);
 
         if (request.getNote() != null)
-            account.setNote(normalizeNote(request.getNote()));
+            account.setNote(ServiceUtils.normalizeNote(request.getNote()));
 
         if (request.getRetired() != null)
             account.setRetired(request.getRetired().booleanValue());
@@ -115,24 +113,4 @@ public final class AccountManagementService
         return name.trim();
     }
 
-    private static String normalizeNote(String note)
-    {
-        if (note == null)
-            return null;
-
-        var trimmed = note.trim();
-        return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private static String resolveCurrencyCode(String requestedCurrencyCode, String fallbackCurrencyCode)
-    {
-        var currencyCode = requestedCurrencyCode == null || requestedCurrencyCode.isBlank()
-                        ? fallbackCurrencyCode
-                        : requestedCurrencyCode.trim().toUpperCase(Locale.ROOT);
-
-        if (CurrencyUnit.getInstance(currencyCode) == null)
-            throw new IllegalArgumentException("Unsupported currency code: " + currencyCode);
-
-        return currencyCode;
-    }
 }

@@ -15,7 +15,6 @@ import name.abuchen.portfolio.model.PortfolioTransaction;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Transaction;
 import name.abuchen.portfolio.model.TransactionPair;
-import name.abuchen.portfolio.money.CurrencyUnit;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.ui.api.dto.TransactionMutationDto;
 
@@ -102,7 +101,7 @@ public final class TransactionManagementService
         var account = AccountManagementService.findAccount(client, requireOwnerUuid(request.getOwnerUuid()));
         var type = parseAccountType(requireType(request.getType()));
         var security = resolveSecurity(client, request.getSecurityUuid(), requiresSecurity(type));
-        var currencyCode = resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
+        var currencyCode = ServiceUtils.resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
 
         if (!currencyCode.equals(account.getCurrencyCode()))
             throw new IllegalArgumentException("Account transaction currency must match account currency");
@@ -129,7 +128,7 @@ public final class TransactionManagementService
             if (account == null)
                 throw new IllegalArgumentException("Security account must have a reference account for buy/sell transactions");
 
-            var currencyCode = resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
+            var currencyCode = ServiceUtils.resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
             var entry = new BuySellEntry(portfolio, account);
             entry.setDate(dateTime);
             entry.setType(type);
@@ -137,14 +136,14 @@ public final class TransactionManagementService
             entry.setShares(shares);
             entry.setAmount(amount);
             entry.setCurrencyCode(currencyCode);
-            entry.setNote(normalizeNote(request.getNote()));
+            entry.setNote(ServiceUtils.normalizeNote(request.getNote()));
             entry.setSource(normalizeSource(request.getSource()));
             entry.insert();
 
             return new TransactionPair<>(portfolio, entry.getPortfolioTransaction());
         }
 
-        var currencyCode = resolveCurrencyCode(request.getCurrencyCode(),
+        var currencyCode = ServiceUtils.resolveCurrencyCode(request.getCurrencyCode(),
                         portfolio.getReferenceAccount() != null
                                         ? portfolio.getReferenceAccount().getCurrencyCode()
                                         : client.getBaseCurrency());
@@ -156,7 +155,7 @@ public final class TransactionManagementService
         transaction.setShares(shares);
         transaction.setAmount(amount);
         transaction.setCurrencyCode(currencyCode);
-        transaction.setNote(normalizeNote(request.getNote()));
+        transaction.setNote(ServiceUtils.normalizeNote(request.getNote()));
         transaction.setSource(normalizeSource(request.getSource()));
 
         portfolio.addTransaction(transaction);
@@ -168,31 +167,36 @@ public final class TransactionManagementService
     {
         var account = (Account) existing.getOwner();
 
-        if (request.getDateTime() != null)
-            transaction.setDateTime(request.getDateTime());
-
-        if (request.getAmount() != null)
-            transaction.setAmount(toInternalAmount(request.getAmount()));
-
+        var dateTime = request.getDateTime();
+        var amount = request.getAmount() != null ? toInternalAmount(request.getAmount()) : null;
+        String currencyCode = null;
         if (request.getCurrencyCode() != null)
         {
-            var currencyCode = resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
+            currencyCode = ServiceUtils.resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
             if (!currencyCode.equals(account.getCurrencyCode()))
                 throw new IllegalArgumentException("Account transaction currency must match account currency");
-            transaction.setCurrencyCode(currencyCode);
         }
+        var security = request.getSecurityUuid() != null
+                        ? resolveSecurity(client, request.getSecurityUuid(), false)
+                        : null;
+        var shares = request.getShares() != null ? toInternalShares(request.getShares()) : null;
+        var note = request.getNote() != null ? ServiceUtils.normalizeNote(request.getNote()) : null;
+        var source = request.getSource() != null ? normalizeSource(request.getSource()) : null;
 
+        if (dateTime != null)
+            transaction.setDateTime(dateTime);
+        if (amount != null)
+            transaction.setAmount(amount);
+        if (currencyCode != null)
+            transaction.setCurrencyCode(currencyCode);
         if (request.getSecurityUuid() != null)
-            transaction.setSecurity(resolveSecurity(client, request.getSecurityUuid(), false));
-
+            transaction.setSecurity(security);
         if (request.getShares() != null)
-            transaction.setShares(toInternalShares(request.getShares()));
-
+            transaction.setShares(shares);
         if (request.getNote() != null)
-            transaction.setNote(normalizeNote(request.getNote()));
-
+            transaction.setNote(note);
         if (request.getSource() != null)
-            transaction.setSource(normalizeSource(request.getSource()));
+            transaction.setSource(source);
 
         return existing;
     }
@@ -205,54 +209,65 @@ public final class TransactionManagementService
 
         if (crossEntry instanceof BuySellEntry buySellEntry)
         {
-            if (request.getDateTime() != null)
-                buySellEntry.setDate(request.getDateTime());
-
-            if (request.getSecurityUuid() != null)
-                buySellEntry.setSecurity(resolveSecurity(client, request.getSecurityUuid(), true));
-
-            if (request.getShares() != null)
-                buySellEntry.setShares(toInternalShares(request.getShares()));
-
-            if (request.getAmount() != null)
-                buySellEntry.setAmount(toInternalAmount(request.getAmount()));
-
+            var dateTime = request.getDateTime();
+            var security = request.getSecurityUuid() != null
+                            ? resolveSecurity(client, request.getSecurityUuid(), true)
+                            : null;
+            var shares = request.getShares() != null ? toInternalShares(request.getShares()) : null;
+            var amount = request.getAmount() != null ? toInternalAmount(request.getAmount()) : null;
+            String currencyCode = null;
             if (request.getCurrencyCode() != null)
             {
                 var account = buySellEntry.getAccount();
-                var currencyCode = resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
-                buySellEntry.setCurrencyCode(currencyCode);
+                currencyCode = ServiceUtils.resolveCurrencyCode(request.getCurrencyCode(), account.getCurrencyCode());
             }
+            var note = request.getNote() != null ? ServiceUtils.normalizeNote(request.getNote()) : null;
+            var source = request.getSource() != null ? normalizeSource(request.getSource()) : null;
 
+            if (dateTime != null)
+                buySellEntry.setDate(dateTime);
+            if (request.getSecurityUuid() != null)
+                buySellEntry.setSecurity(security);
+            if (request.getShares() != null)
+                buySellEntry.setShares(shares);
+            if (amount != null)
+                buySellEntry.setAmount(amount);
+            if (currencyCode != null)
+                buySellEntry.setCurrencyCode(currencyCode);
             if (request.getNote() != null)
-                buySellEntry.setNote(normalizeNote(request.getNote()));
-
+                buySellEntry.setNote(note);
             if (request.getSource() != null)
-                buySellEntry.setSource(normalizeSource(request.getSource()));
+                buySellEntry.setSource(source);
 
             return new TransactionPair<>(portfolio, buySellEntry.getPortfolioTransaction());
         }
 
-        if (request.getDateTime() != null)
-            transaction.setDateTime(request.getDateTime());
+        var dateTime = request.getDateTime();
+        var security = request.getSecurityUuid() != null
+                        ? resolveSecurity(client, request.getSecurityUuid(), true)
+                        : null;
+        var shares = request.getShares() != null ? toInternalShares(request.getShares()) : null;
+        var amount = request.getAmount() != null ? toInternalAmount(request.getAmount()) : null;
+        var currencyCode = request.getCurrencyCode() != null
+                        ? ServiceUtils.resolveCurrencyCode(request.getCurrencyCode(), transaction.getCurrencyCode())
+                        : null;
+        var note = request.getNote() != null ? ServiceUtils.normalizeNote(request.getNote()) : null;
+        var source = request.getSource() != null ? normalizeSource(request.getSource()) : null;
 
+        if (dateTime != null)
+            transaction.setDateTime(dateTime);
         if (request.getSecurityUuid() != null)
-            transaction.setSecurity(resolveSecurity(client, request.getSecurityUuid(), true));
-
+            transaction.setSecurity(security);
         if (request.getShares() != null)
-            transaction.setShares(toInternalShares(request.getShares()));
-
-        if (request.getAmount() != null)
-            transaction.setAmount(toInternalAmount(request.getAmount()));
-
-        if (request.getCurrencyCode() != null)
-            transaction.setCurrencyCode(resolveCurrencyCode(request.getCurrencyCode(), transaction.getCurrencyCode()));
-
+            transaction.setShares(shares);
+        if (amount != null)
+            transaction.setAmount(amount);
+        if (currencyCode != null)
+            transaction.setCurrencyCode(currencyCode);
         if (request.getNote() != null)
-            transaction.setNote(normalizeNote(request.getNote()));
-
+            transaction.setNote(note);
         if (request.getSource() != null)
-            transaction.setSource(normalizeSource(request.getSource()));
+            transaction.setSource(source);
 
         return existing;
     }
@@ -260,7 +275,7 @@ public final class TransactionManagementService
     private static void applyOptionalFields(Transaction transaction, TransactionMutationDto request, long shares)
     {
         transaction.setShares(shares);
-        transaction.setNote(normalizeNote(request.getNote()));
+        transaction.setNote(ServiceUtils.normalizeNote(request.getNote()));
         transaction.setSource(normalizeSource(request.getSource()));
     }
 
@@ -339,18 +354,6 @@ public final class TransactionManagementService
                                         "Security with UUID " + securityUuid + " not found in portfolio"));
     }
 
-    private static String resolveCurrencyCode(String requestedCurrencyCode, String fallbackCurrencyCode)
-    {
-        var currencyCode = requestedCurrencyCode == null || requestedCurrencyCode.isBlank()
-                        ? fallbackCurrencyCode
-                        : requestedCurrencyCode.trim().toUpperCase(Locale.ROOT);
-
-        if (CurrencyUnit.getInstance(currencyCode) == null)
-            throw new IllegalArgumentException("Unsupported currency code: " + currencyCode);
-
-        return currencyCode;
-    }
-
     private static long toInternalAmount(double value)
     {
         if (!Double.isFinite(value) || value <= 0)
@@ -426,15 +429,6 @@ public final class TransactionManagementService
     {
         if (request == null)
             throw new IllegalArgumentException("Request body is required");
-    }
-
-    private static String normalizeNote(String note)
-    {
-        if (note == null)
-            return null;
-
-        var trimmed = note.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private static String normalizeSource(String source)
