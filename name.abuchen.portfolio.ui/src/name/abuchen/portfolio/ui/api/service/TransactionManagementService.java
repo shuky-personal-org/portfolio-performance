@@ -1,6 +1,7 @@
 package name.abuchen.portfolio.ui.api.service;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
@@ -93,8 +94,6 @@ public final class TransactionManagementService
 
         var entry = new BuySellEntry(portfolio, account);
         entry.setCurrencyCode(currencyCode);
-        entry.insert();
-
         entry.setDate(dateTime);
         entry.setType(type);
         entry.setSecurity(security);
@@ -102,6 +101,7 @@ public final class TransactionManagementService
         entry.setAmount(amount);
         entry.setNote(note);
         entry.setSource(source);
+        entry.insert();
 
         return new TransactionPair<>(portfolio, entry.getPortfolioTransaction());
     }
@@ -242,7 +242,7 @@ public final class TransactionManagementService
     {
         var currencyCode = requestedCurrencyCode == null || requestedCurrencyCode.isBlank()
                         ? fallbackCurrencyCode
-                        : requestedCurrencyCode.trim().toUpperCase();
+                        : requestedCurrencyCode.trim().toUpperCase(Locale.ROOT);
 
         if (CurrencyUnit.getInstance(currencyCode) == null)
             throw new IllegalArgumentException("Unsupported currency code: " + currencyCode);
