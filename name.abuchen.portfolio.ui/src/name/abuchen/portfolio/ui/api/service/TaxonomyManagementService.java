@@ -46,6 +46,8 @@ public final class TaxonomyManagementService
         {
             taxonomy = new Taxonomy(name);
             taxonomy.setRootNode(buildClassification(client, null, request.getRoot(), name));
+            if (taxonomy.getRoot() != null)
+                taxonomy.getRoot().setName(name);
         }
         else
         {
