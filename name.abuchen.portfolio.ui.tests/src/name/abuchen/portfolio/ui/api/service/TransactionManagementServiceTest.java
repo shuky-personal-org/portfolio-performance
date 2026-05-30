@@ -40,9 +40,10 @@ public class TransactionManagementServiceTest
         request.setAmount(1000d);
 
         var pair = TransactionManagementService.createTransaction(client, request);
+        var portfolioTransaction = (PortfolioTransaction) pair.getTransaction();
 
-        assertThat(pair.getTransaction().getType(), is(PortfolioTransaction.Type.BUY));
-        assertThat(pair.getTransaction().getShares(), is(10_000_000L));
+        assertThat(portfolioTransaction.getType(), is(PortfolioTransaction.Type.BUY));
+        assertThat(portfolioTransaction.getShares(), is(10_000_000L));
         assertThat(account.getTransactions().size(), is(1));
         assertThat(portfolio.getTransactions().size(), is(1));
         assertThat(account.getTransactions().get(0).getCrossEntry(), is(portfolio.getTransactions().get(0).getCrossEntry()));
@@ -70,8 +71,9 @@ public class TransactionManagementServiceTest
         request.setAmount(500d);
 
         var pair = TransactionManagementService.createTransaction(client, request);
+        var portfolioTransaction = (PortfolioTransaction) pair.getTransaction();
 
-        assertThat(pair.getTransaction().getType(), is(PortfolioTransaction.Type.DELIVERY_INBOUND));
+        assertThat(portfolioTransaction.getType(), is(PortfolioTransaction.Type.DELIVERY_INBOUND));
         assertThat(account.getTransactions().isEmpty(), is(true));
         assertThat(portfolio.getTransactions().size(), is(1));
     }
