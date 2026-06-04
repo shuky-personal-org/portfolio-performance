@@ -132,7 +132,7 @@ public final class TaxonomyManagementService
         if (request.getDimensions() != null)
             taxonomy.setDimensions(new ArrayList<>(request.getDimensions()));
         else if (isCreate && taxonomy.getDimensions() == null)
-            taxonomy.setDimensions(List.of());
+            taxonomy.setDimensions(new ArrayList<>());
     }
 
     private static Classification buildClassification(Client client, Classification parent,
