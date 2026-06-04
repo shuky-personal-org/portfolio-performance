@@ -8,11 +8,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  docker:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.bp.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,12 +35,22 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.sha }}
             ghcr.io/${{ github.repository }}:latest
-            
+
       - name: Show digest
         run: echo "Digest is ${{ steps.bp.outputs.digest }}"
-      
-      - name: Notify ops repo
-        if: ${{ github.ref == 'refs/heads/main' }}
+
+  notify-ops:
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [pp-api, pp-ui]
+    steps:
+      - name: Dispatch image-published (${{ matrix.service }})
+        id: dispatch
+        continue-on-error: true
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.OPSPROD_DISPATCH_TOKEN }}
@@ -46,21 +58,29 @@ jobs:
           event-type: image-published
           client-payload: >
             {
-              "service": "pp-api",
+              "service": "${{ matrix.service }}",
               "image": "ghcr.io/${{ github.repository }}",
-              "digest": "${{ steps.bp.outputs.digest }}"
+              "digest": "${{ needs.build.outputs.digest }}"
             }
-      
-      - name: Notify ops repo
-        if: ${{ github.ref == 'refs/heads/main' }}
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.OPSPROD_DISPATCH_TOKEN }}
-          repository: shuky-personal-org/investment-ops
-          event-type: image-published
-          client-payload: >
-            {
-              "service": "pp-ui",
-              "image": "ghcr.io/${{ github.repository }}",
-              "digest": "${{ steps.bp.outputs.digest }}"
-            }
+
+      - name: Warn when dispatch fails
+        if: steps.dispatch.outcome == 'failure'
+        run: |
+          echo "::warning::repository_dispatch for ${{ matrix.service }} failed (often expired OPSPROD_DISPATCH_TOKEN)."
+          echo "::warning::Image publish succeeded; rotate the token per investment-ops/docs/CI_DISPATCH_TOKEN.md"
+
+  notify-status:
+    needs: [build, notify-ops]
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize workflow
+        env:
+          NOTIFY_RESULT: ${{ needs.notify-ops.result }}
+        run: |
+          if [[ "${NOTIFY_RESULT}" == "success" ]]; then
+            echo "Ops deploy dispatch succeeded for pp-api and pp-ui."
+          else
+            echo "::warning::One or more ops dispatches failed (notify-ops result=${NOTIFY_RESULT})."
+            echo "::warning::GHCR image for ${{ github.sha }} was published. Rotate OPSPROD_DISPATCH_TOKEN — investment-ops/docs/CI_DISPATCH_TOKEN.md"
+          fi
