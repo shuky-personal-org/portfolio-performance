@@ -23,10 +23,17 @@ public class TaxonomyJSONExporter implements Exporter
     public static class AllTaxonomies implements Exporter
     {
         private final Client client;
+        private final boolean includeInstruments;
 
         public AllTaxonomies(Client client)
         {
+            this(client, true);
+        }
+
+        public AllTaxonomies(Client client, boolean includeInstruments)
+        {
             this.client = client;
+            this.includeInstruments = includeInstruments;
         }
 
         @Override
@@ -42,7 +49,7 @@ public class TaxonomyJSONExporter implements Exporter
 
             for (Taxonomy taxonomy : client.getTaxonomies())
             {
-                var individualExporter = new TaxonomyJSONExporter(taxonomy);
+                var individualExporter = new TaxonomyJSONExporter(taxonomy, includeInstruments);
                 var taxonomyJson = individualExporter.createJSONStructure();
                 taxonomiesArray.add(taxonomyJson);
             }
@@ -68,10 +75,17 @@ public class TaxonomyJSONExporter implements Exporter
     }
 
     private final Taxonomy taxonomy;
+    private final boolean includeInstruments;
 
     public TaxonomyJSONExporter(Taxonomy taxonomy)
     {
+        this(taxonomy, true);
+    }
+
+    public TaxonomyJSONExporter(Taxonomy taxonomy, boolean includeInstruments)
+    {
         this.taxonomy = taxonomy;
+        this.includeInstruments = includeInstruments;
     }
 
     @Override
@@ -102,15 +116,19 @@ public class TaxonomyJSONExporter implements Exporter
         Map<String, Object> result = new LinkedHashMap<>();
 
         List<Map<String, Object>> categories = new ArrayList<>();
-        List<Map<String, Object>> instruments = new ArrayList<>();
 
         taxonomy.getRoot().getChildren().forEach(c -> addClassificationToCategories(c, categories));
-        addInstrumentsFromTaxonomy(instruments);
 
         result.put("name", taxonomy.getName()); //$NON-NLS-1$
         result.put("color", taxonomy.getRoot().getColor()); //$NON-NLS-1$
         result.put("categories", categories); //$NON-NLS-1$
-        result.put("instruments", instruments); //$NON-NLS-1$
+
+        if (includeInstruments)
+        {
+            List<Map<String, Object>> instruments = new ArrayList<>();
+            addInstrumentsFromTaxonomy(instruments);
+            result.put("instruments", instruments); //$NON-NLS-1$
+        }
 
         return result;
     }

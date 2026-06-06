@@ -1,5 +1,7 @@
 package name.abuchen.portfolio.ui.api.controller;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -19,6 +21,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import name.abuchen.portfolio.model.Client;
+import name.abuchen.portfolio.model.TaxonomyJSONExporter;
 import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
@@ -333,6 +336,100 @@ public class TaxonomiesController extends BaseController {
                 e.getMessage());
         }
     }
+
+    /**
+     * Export all taxonomy structures (categories only, no security assignments).
+     *
+     * @param portfolioId The portfolio ID
+     * @return JSON attachment containing taxonomy category trees
+     */
+    @GET
+    @Path("/export")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response exportAllTaxonomyStructures(@PathParam("portfolioId") String portfolioId) {
+        try {
+            logger.info("Exporting taxonomy structures for portfolio {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before exporting taxonomies");
+            }
+
+            byte[] jsonBytes = exportTaxonomiesStructure(client);
+            String filename = buildTaxonomiesExportFilename(portfolioId);
+
+            return Response.ok(jsonBytes, MediaType.APPLICATION_JSON)
+                            .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                            .header("X-Content-Type-Options", "nosniff")
+                            .build();
+
+        } catch (IOException e) {
+            logger.error("Failed to export taxonomy structures for portfolio {}: {}", portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to export taxonomy structures: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error exporting taxonomy structures for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
+    }
+
+    /**
+     * Export a single taxonomy structure (categories only, no security assignments).
+     *
+     * @param portfolioId The portfolio ID
+     * @param taxonomyId The taxonomy ID
+     * @return JSON attachment containing the taxonomy category tree
+     */
+    @GET
+    @Path("/{taxonomyId}/export")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response exportTaxonomyStructure(@PathParam("portfolioId") String portfolioId,
+                    @PathParam("taxonomyId") String taxonomyId) {
+        try {
+            logger.info("Exporting taxonomy structure {} for portfolio {}", taxonomyId, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+            if (client == null) {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before exporting taxonomies");
+            }
+
+            name.abuchen.portfolio.model.Taxonomy taxonomy = TaxonomyManagementService.findTaxonomy(client, taxonomyId);
+            byte[] jsonBytes = exportTaxonomyStructure(taxonomy);
+            String filename = buildTaxonomyExportFilename(taxonomy.getName());
+
+            return Response.ok(jsonBytes, MediaType.APPLICATION_JSON)
+                            .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                            .header("X-Content-Type-Options", "nosniff")
+                            .build();
+
+        } catch (java.util.NoSuchElementException e) {
+            logger.warn("Taxonomy not found: {} in portfolio: {}", taxonomyId, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Taxonomy not found",
+                e.getMessage());
+        } catch (IOException e) {
+            logger.error("Failed to export taxonomy {} for portfolio {}: {}", taxonomyId, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to export taxonomy structure: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Unexpected error exporting taxonomy {} for portfolio {}: {}",
+                taxonomyId, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
+    }
     
     /**
      * Get taxonomy DCA (Dollar Cost Averaging) data for a specific date.
@@ -434,6 +531,44 @@ public class TaxonomiesController extends BaseController {
         }
     }
     
+    // ===== Export Helpers =====
+
+    private byte[] exportTaxonomiesStructure(Client client) throws IOException
+    {
+        try (var out = new ByteArrayOutputStream())
+        {
+            new TaxonomyJSONExporter.AllTaxonomies(client, false).export(out);
+            return out.toByteArray();
+        }
+    }
+
+    private byte[] exportTaxonomyStructure(name.abuchen.portfolio.model.Taxonomy taxonomy) throws IOException
+    {
+        try (var out = new ByteArrayOutputStream())
+        {
+            new TaxonomyJSONExporter(taxonomy, false).export(out);
+            return out.toByteArray();
+        }
+    }
+
+    private String buildTaxonomiesExportFilename(String portfolioId)
+    {
+        return sanitizeFilename(portfolioId) + "-taxonomies-structure.json";
+    }
+
+    private String buildTaxonomyExportFilename(String taxonomyName)
+    {
+        return sanitizeFilename(taxonomyName) + "-taxonomy-structure.json";
+    }
+
+    private String sanitizeFilename(String value)
+    {
+        if (value == null || value.isBlank())
+            return "taxonomy";
+
+        return value.trim().replaceAll("[^a-zA-Z0-9._-]+", "-");
+    }
+
     // ===== Helper Methods (Migrated from PortfolioFileService) =====
     
     /**
