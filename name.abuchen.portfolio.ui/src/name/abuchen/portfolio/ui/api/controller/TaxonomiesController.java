@@ -2,6 +2,7 @@ package name.abuchen.portfolio.ui.api.controller;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,7 +29,10 @@ import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.ui.api.dto.AssignmentDto;
 import name.abuchen.portfolio.ui.api.dto.ClassificationDto;
 import name.abuchen.portfolio.ui.api.dto.TaxonomyDto;
+import name.abuchen.portfolio.ui.api.dto.TaxonomyImportResultDto;
 import name.abuchen.portfolio.ui.api.dto.TaxonomyMutationDto;
+import name.abuchen.portfolio.ui.api.service.TaxonomyImportService;
+import name.abuchen.portfolio.ui.api.service.TaxonomyImportService.ImportOptions;
 import name.abuchen.portfolio.ui.api.service.TaxonomyManagementService;
 import name.abuchen.portfolio.ui.views.taxonomy.TaxonomyModel;
 import name.abuchen.portfolio.ui.views.taxonomy.TaxonomyNode;
@@ -330,6 +334,152 @@ public class TaxonomiesController extends BaseController {
                 e.getMessage());
         } catch (Exception e) {
             logger.error("Unexpected error deleting taxonomy {} for portfolio {}: {}",
+                taxonomyId, portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
+    }
+
+    /**
+     * Import taxonomy structures from JSON (single object or array).
+     * Creates new taxonomies or merges into existing ones when names match.
+     */
+    @POST
+    @Path("/import")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response importTaxonomyStructures(@PathParam("portfolioId") String portfolioId,
+                    InputStream jsonBody,
+                    @QueryParam("preserveNameAndDescription") boolean preserveNameAndDescription,
+                    @QueryParam("pruneAbsentClassifications") boolean pruneAbsentClassifications)
+    {
+        try
+        {
+            logger.info("Importing taxonomy structures for portfolio {}", portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+            if (client == null)
+            {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before importing taxonomies");
+            }
+
+            var options = new ImportOptions(preserveNameAndDescription, pruneAbsentClassifications);
+            List<TaxonomyImportResultDto> imported = TaxonomyImportService.importStructures(client, jsonBody, options);
+
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("count", imported.size());
+            response.put("imported", imported);
+            response.put("message", "Taxonomy structures imported successfully");
+
+            logger.info("Imported {} taxonomy structure(s) for portfolio {}", imported.size(), portfolioId);
+
+            return Response.ok(response).build();
+
+        }
+        catch (IllegalArgumentException e)
+        {
+            logger.warn("Invalid taxonomy import request for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        }
+        catch (IOException e)
+        {
+            logger.warn("Failed to parse taxonomy import for portfolio {}: {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid JSON",
+                e.getMessage());
+        }
+        catch (Exception e)
+        {
+            logger.error("Unexpected error importing taxonomy structures for portfolio {}: {}",
+                portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "Internal server error",
+                e.getMessage());
+        }
+    }
+
+    /**
+     * Import a taxonomy structure into an existing taxonomy.
+     */
+    @POST
+    @Path("/{taxonomyId}/import")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response importTaxonomyStructure(@PathParam("portfolioId") String portfolioId,
+                    @PathParam("taxonomyId") String taxonomyId,
+                    InputStream jsonBody,
+                    @QueryParam("preserveNameAndDescription") boolean preserveNameAndDescription,
+                    @QueryParam("pruneAbsentClassifications") boolean pruneAbsentClassifications)
+    {
+        try
+        {
+            logger.info("Importing taxonomy structure into {} for portfolio {}", taxonomyId, portfolioId);
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+            if (client == null)
+            {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse(
+                    "PORTFOLIO_NOT_LOADED",
+                    "Portfolio must be opened first before importing taxonomies");
+            }
+
+            var options = new ImportOptions(preserveNameAndDescription, pruneAbsentClassifications);
+            TaxonomyImportResultDto imported = TaxonomyImportService.importStructureIntoTaxonomy(client, taxonomyId,
+                            jsonBody, options);
+
+            client.markDirty();
+            portfolioFileService.saveFile(portfolioId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("portfolioId", portfolioId);
+            response.put("taxonomyId", taxonomyId);
+            response.put("imported", imported);
+            response.put("message", "Taxonomy structure imported successfully");
+
+            logger.info("Imported taxonomy structure into {} for portfolio {}", taxonomyId, portfolioId);
+
+            return Response.ok(response).build();
+
+        }
+        catch (java.util.NoSuchElementException e)
+        {
+            logger.warn("Taxonomy not found: {} in portfolio: {}", taxonomyId, portfolioId);
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "Taxonomy not found",
+                e.getMessage());
+        }
+        catch (IllegalArgumentException e)
+        {
+            logger.warn("Invalid taxonomy import request for taxonomy {} in portfolio {}: {}",
+                taxonomyId, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid request",
+                e.getMessage());
+        }
+        catch (IOException e)
+        {
+            logger.warn("Failed to parse taxonomy import for taxonomy {} in portfolio {}: {}",
+                taxonomyId, portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "Invalid JSON",
+                e.getMessage());
+        }
+        catch (Exception e)
+        {
+            logger.error("Unexpected error importing taxonomy structure into {} for portfolio {}: {}",
                 taxonomyId, portfolioId, e.getMessage(), e);
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
                 "Internal server error",
