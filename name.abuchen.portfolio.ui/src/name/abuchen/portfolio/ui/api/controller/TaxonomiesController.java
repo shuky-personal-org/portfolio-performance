@@ -766,7 +766,8 @@ public class TaxonomiesController extends BaseController {
         dto.setId(taxonomy.getId());
         dto.setName(taxonomy.getName());
         dto.setSource(taxonomy.getSource());
-        dto.setDimensions(taxonomy.getDimensions());
+        var dimensions = taxonomy.getDimensions();
+        dto.setDimensions(dimensions != null ? dimensions : List.of());
         dto.setClassificationsCount(taxonomy.getAllClassifications().size());
         dto.setHeight(taxonomy.getHeigth());
         
