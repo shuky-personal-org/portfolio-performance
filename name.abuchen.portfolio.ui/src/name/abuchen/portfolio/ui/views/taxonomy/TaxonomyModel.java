@@ -202,7 +202,14 @@ public final class TaxonomyModel
                 return;
 
             Assignment assignment = node.getAssignment();
-            Assignment count = investmentVehicle2weight.get(assignment.getInvestmentVehicle());
+            var vehicle = assignment.getInvestmentVehicle();
+            if (vehicle == null)
+                return;
+
+            Assignment count = investmentVehicle2weight.get(vehicle);
+            if (count == null)
+                return;
+
             count.setWeight(count.getWeight() + assignment.getWeight());
         });
 
