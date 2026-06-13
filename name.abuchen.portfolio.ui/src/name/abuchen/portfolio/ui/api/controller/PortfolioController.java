@@ -6,11 +6,14 @@ import java.nio.file.FileAlreadyExistsException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DefaultValue;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.PATCH;
@@ -23,6 +26,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import name.abuchen.portfolio.model.Client;
+import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.money.CurrencyConverter;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
 import name.abuchen.portfolio.money.ExchangeRateProviderFactory;
@@ -36,6 +40,8 @@ import name.abuchen.portfolio.snapshot.ReportingPeriod;
 import name.abuchen.portfolio.ui.api.dto.BaseCurrencyUpdateRequest;
 import name.abuchen.portfolio.ui.api.dto.PerformanceCalculationDto;
 import name.abuchen.portfolio.ui.api.dto.PerformanceCalculationDto.MoneyValueDto;
+import name.abuchen.portfolio.ui.api.dto.TopMoversDto;
+import name.abuchen.portfolio.ui.api.dto.TopMoversDto.TopMoverEntryDto;
 import name.abuchen.portfolio.ui.api.dto.PortfolioFileInfo;
 import name.abuchen.portfolio.ui.api.dto.PortfolioFileRequest;
 import name.abuchen.portfolio.ui.api.service.QuoteFeedApiKeyService;
@@ -800,6 +806,131 @@ public class PortfolioController extends BaseController {
         return null;
     }
     
+    /**
+     * Get top gainers and losers among currently held securities over a short period.
+     *
+     * Uses the same PerformanceIndex calculation path as performanceCalculation,
+     * but only evaluates held securities and returns the top movers.
+     */
+    @GET
+    @Path("/{portfolioId}/topMovers")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getTopMovers(@PathParam("portfolioId") String portfolioId,
+                    @QueryParam("days") @DefaultValue("3") int days,
+                    @QueryParam("limit") @DefaultValue("5") int limit)
+    {
+        try
+        {
+            logger.info("Getting top movers for portfolio: {} (days={}, limit={})", portfolioId, days, limit);
+
+            if (days < 1 || days > 30)
+            {
+                return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_DAYS",
+                                "Days must be between 1 and 30");
+            }
+
+            if (limit < 1 || limit > 20)
+            {
+                return createErrorResponse(Response.Status.BAD_REQUEST, "INVALID_LIMIT",
+                                "Limit must be between 1 and 20");
+            }
+
+            Client client = portfolioFileService.getPortfolio(portfolioId);
+
+            if (client == null)
+            {
+                logger.warn("No cached client found for portfolio: {}", portfolioId);
+                return createPreconditionRequiredResponse("PORTFOLIO_NOT_LOADED",
+                                "Portfolio must be opened first before accessing top movers");
+            }
+
+            LocalDate endDate = LocalDate.now();
+            LocalDate startDate = endDate.minusDays(days - 1L);
+            Interval interval = Interval.of(startDate, endDate);
+
+            ExchangeRateProviderFactory factory = new ExchangeRateProviderFactory(client);
+            CurrencyConverter converter = new CurrencyConverterImpl(factory, client.getBaseCurrency());
+
+            PerformanceIndex clientIndex = PerformanceIndex.forClient(client, converter, interval,
+                            new ArrayList<>());
+            ClientPerformanceSnapshot clientSnapshot = clientIndex.getClientPerformanceSnapshot(true)
+                            .orElseThrow(() -> new IllegalStateException("Unable to calculate performance snapshot"));
+
+            List<TopMoverEntryDto> movers = clientSnapshot.getEndClientSnapshot().getPositionsByVehicle()
+                            .entrySet().stream()
+                            .map(Map.Entry::getKey)
+                            .filter(Security.class::isInstance)
+                            .map(Security.class::cast)
+                            .filter(security -> !security.isRetired())
+                            .filter(this::isNotOptionsContract)
+                            .map(security -> createTopMoverEntry(clientIndex, security))
+                            .filter(entry -> entry != null && entry.getPriceChangePercent() != 0d)
+                            .collect(Collectors.toList());
+
+            List<TopMoverEntryDto> gainers = movers.stream()
+                            .filter(entry -> entry.getPriceChangePercent() > 0)
+                            .sorted(Comparator.comparingDouble(TopMoverEntryDto::getPriceChangePercent).reversed())
+                            .limit(limit)
+                            .collect(Collectors.toList());
+
+            List<TopMoverEntryDto> losers = movers.stream()
+                            .filter(entry -> entry.getPriceChangePercent() < 0)
+                            .sorted(Comparator.comparingDouble(TopMoverEntryDto::getPriceChangePercent))
+                            .limit(limit)
+                            .collect(Collectors.toList());
+
+            TopMoversDto dto = new TopMoversDto();
+            dto.setPortfolioId(portfolioId);
+            dto.setDays(days);
+            dto.setStartDate(startDate);
+            dto.setEndDate(endDate);
+            dto.setLimit(limit);
+            dto.setGainers(gainers);
+            dto.setLosers(losers);
+
+            logger.info("Returning {} gainers and {} losers for portfolio {}", gainers.size(), losers.size(),
+                            portfolioId);
+
+            return Response.ok(dto).build();
+        }
+        catch (IllegalStateException e)
+        {
+            logger.error("Failed to calculate top movers for portfolio {}: {}", portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "CALCULATION_ERROR",
+                            "Failed to calculate top movers: " + e.getMessage());
+        }
+        catch (Exception e)
+        {
+            logger.error("Unexpected error getting top movers for portfolio {}: {}", portfolioId, e.getMessage(), e);
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "Internal server error", e.getMessage());
+        }
+    }
+
+    private TopMoverEntryDto createTopMoverEntry(PerformanceIndex clientIndex, Security security)
+    {
+        PerformanceIndex securityIndex = PerformanceIndex.forSecurity(clientIndex, security);
+        double priceChange = securityIndex.getFinalAccumulatedPercentage() * 100d;
+
+        if (!Double.isFinite(priceChange))
+            return null;
+
+        TopMoverEntryDto entry = new TopMoverEntryDto();
+        entry.setUuid(security.getUUID());
+        entry.setName(security.getName());
+        entry.setTickerSymbol(security.getTickerSymbol());
+        entry.setPriceChangePercent(priceChange);
+        return entry;
+    }
+
+    private boolean isNotOptionsContract(Security security)
+    {
+        String tickerSymbol = security.getTickerSymbol();
+        if (tickerSymbol != null && tickerSymbol.replaceAll("\\s+", "").matches(".*\\d{6}[CP]\\d{8}"))
+            return false;
+
+        return true;
+    }
+
     /**
      * Helper method to create MoneyValueDto from Money.
      */
