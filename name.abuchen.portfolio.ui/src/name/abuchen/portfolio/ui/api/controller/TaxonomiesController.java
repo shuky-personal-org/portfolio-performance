@@ -735,18 +735,6 @@ public class TaxonomiesController extends BaseController {
         TaxonomyModel model = new TaxonomyModel(factory, client, taxonomy, date != null ? date : LocalDate.now());
         return model.getClassificationRootNode();
     }
-
-    private TaxonomyNode buildTaxonomyModelSafely(Client client, name.abuchen.portfolio.model.Taxonomy taxonomy,
-                    LocalDate date) {
-        try {
-            return buildTaxonomyModel(client, taxonomy, date);
-        }
-        catch (Exception e) {
-            logger.warn("Failed to build taxonomy model for {} ({}): {}", taxonomy.getName(), taxonomy.getId(),
-                            e.getMessage(), e);
-            return null;
-        }
-    }
     
     /**
      * Helper method to convert all taxonomies from client to DTOs.
@@ -783,14 +771,12 @@ public class TaxonomiesController extends BaseController {
         dto.setClassificationsCount(taxonomy.getAllClassifications().size());
         dto.setHeight(taxonomy.getHeigth());
         
-        // Build TaxonomyModel with optional date (may fail for stale assignments)
-        TaxonomyNode rootNode = buildTaxonomyModelSafely(client, taxonomy, date);
-        Money rootTotal = rootNode != null ? rootNode.getActual()
-                        : Money.of(client.getBaseCurrency(), 0);
-
+        // Build TaxonomyModel with optional date
+        TaxonomyNode rootNode = buildTaxonomyModel(client, taxonomy, date);
+        
         // Convert the root classification
         if (taxonomy.getRoot() != null) {
-            dto.setRoot(convertClassification(taxonomy.getRoot(), rootNode, rootTotal));
+            dto.setRoot(convertClassification(taxonomy.getRoot(), rootNode, rootNode.getActual()));
         }
         
         return dto;
@@ -868,13 +854,9 @@ public class TaxonomiesController extends BaseController {
         // Convert assignments
         List<AssignmentDto> assignmentDtos = new ArrayList<>();
         for (name.abuchen.portfolio.model.Classification.Assignment assignment : classification.getAssignments()) {
-            var investmentVehicle = assignment.getInvestmentVehicle();
-            if (investmentVehicle == null)
-                continue;
-
             AssignmentDto assignmentDto = new AssignmentDto();
-            assignmentDto.setInvestmentVehicleUuid(investmentVehicle.getUUID());
-            assignmentDto.setInvestmentVehicleName(investmentVehicle.getName());
+            assignmentDto.setInvestmentVehicleUuid(assignment.getInvestmentVehicle().getUUID());
+            assignmentDto.setInvestmentVehicleName(assignment.getInvestmentVehicle().getName());
             assignmentDto.setWeight(assignment.getWeight() / name.abuchen.portfolio.money.Values.Weight.divider());
             assignmentDto.setRank(assignment.getRank());
             
