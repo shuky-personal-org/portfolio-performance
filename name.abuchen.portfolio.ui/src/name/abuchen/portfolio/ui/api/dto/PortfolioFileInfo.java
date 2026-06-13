@@ -4,8 +4,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 /**
  * Data Transfer Object for portfolio file information.
  * Contains basic information about a loaded portfolio file.
@@ -28,6 +26,7 @@ public class PortfolioFileInfo {
     private int taxonomiesCount;
     private boolean clientLoaded;
     private String clientInfo;
+    private String twsInstanceId;
     
     // Keep only reporting periods and currency conversions as utility data
     private List<ReportingPeriodDto> reportingPeriods;
@@ -163,6 +162,14 @@ public class PortfolioFileInfo {
     
     public void setClientInfo(String clientInfo) {
         this.clientInfo = clientInfo;
+    }
+
+    public String getTwsInstanceId() {
+        return twsInstanceId;
+    }
+
+    public void setTwsInstanceId(String twsInstanceId) {
+        this.twsInstanceId = twsInstanceId;
     }
     
     public List<ReportingPeriodDto> getReportingPeriods() {

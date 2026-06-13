@@ -10,6 +10,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import name.abuchen.portfolio.model.ClientProperties;
+
 public class PortfolioFileServiceTest
 {
     @Rule
@@ -24,8 +26,37 @@ public class PortfolioFileServiceTest
 
         assertThat(fileInfo.getName(), is("Example"));
         assertThat(fileInfo.getPath(), is("Example.portfolio"));
+        assertThat(fileInfo.getTwsInstanceId(), is(ClientProperties.DEFAULT_TWS_INSTANCE_ID));
         assertThat(Files.exists(folder.getRoot().toPath().resolve("Example.portfolio")), is(true));
         assertThat(service.listPortfolioFiles().size(), is(1));
+    }
+
+    @Test
+    public void listsPortfolioFileWithDefaultTwsInstanceId() throws Exception
+    {
+        var service = new PortfolioFileService(folder.getRoot().getAbsolutePath());
+
+        service.createPortfolioFile("ListDefault");
+        service.clearCache();
+
+        var fileInfo = service.listPortfolioFiles().get(0);
+
+        assertThat(fileInfo.getTwsInstanceId(), is(ClientProperties.DEFAULT_TWS_INSTANCE_ID));
+    }
+
+    @Test
+    public void opensPortfolioFileWithStoredTwsInstanceId() throws Exception
+    {
+        var service = new PortfolioFileService(folder.getRoot().getAbsolutePath());
+        var fileInfo = service.createPortfolioFile("BrokerAssigned");
+        var client = service.getPortfolio(fileInfo.getId());
+        client.setProperty(ClientProperties.Keys.TWS_INSTANCE_ID, "primary");
+        service.saveFile(fileInfo.getId());
+
+        service.clearCache();
+        var reloaded = service.openFileById(fileInfo.getId(), null);
+
+        assertThat(reloaded.getTwsInstanceId(), is("primary"));
     }
 
     @Test
