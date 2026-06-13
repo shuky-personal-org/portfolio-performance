@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.ClientFactory;
 import name.abuchen.portfolio.model.ClientFileType;
+import name.abuchen.portfolio.model.ClientProperties;
 import name.abuchen.portfolio.model.ConfigurationSet.WellKnownConfigurationSets;
 import name.abuchen.portfolio.model.SaveFlag;
 import name.abuchen.portfolio.money.CurrencyConverter;
@@ -224,6 +225,7 @@ public class PortfolioFileService {
             ZoneId.systemDefault()
         ));
         fileInfo.setEncrypted(ClientFactory.isEncrypted(file));
+        fileInfo.setTwsInstanceId(ClientProperties.DEFAULT_TWS_INSTANCE_ID);
         return fileInfo;
     }
     
@@ -234,6 +236,7 @@ public class PortfolioFileService {
         Client cached = clientCache.get(fileInfo.getId());
         if (cached != null) {
             fileInfo.setBaseCurrency(cached.getBaseCurrency());
+            fileInfo.setTwsInstanceId(new ClientProperties(cached).getTwsInstanceId());
             return;
         }
 
@@ -289,6 +292,7 @@ public class PortfolioFileService {
         fileInfo.setVersion(client.getFileVersionAfterRead());
         fileInfo.setClientLoaded(true);
         fileInfo.setClientInfo("Client loaded successfully");
+        fileInfo.setTwsInstanceId(new ClientProperties(client).getTwsInstanceId());
         
         // Set counts only (detailed data available via specialized controllers)
         setCountsOnly(fileInfo, client);

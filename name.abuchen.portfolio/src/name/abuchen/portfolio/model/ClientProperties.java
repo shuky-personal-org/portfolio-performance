@@ -9,7 +9,10 @@ public class ClientProperties
     {
         String RISK_FREE_RATE_OF_RETURN = "risk-free-rate-of-return"; //$NON-NLS-1$
         String SECURITY_NAME_CONFIG = "security-name-config"; //$NON-NLS-1$
+        String TWS_INSTANCE_ID = "tws_instance_id";
     }
+
+    public static final String DEFAULT_TWS_INSTANCE_ID = "default";
 
     private final Client client;
 
@@ -63,5 +66,14 @@ public class ClientProperties
     public void setSecurityNameConfig(SecurityNameConfig config)
     {
         client.setProperty(Keys.SECURITY_NAME_CONFIG, config.name());
+    }
+
+    public String getTwsInstanceId()
+    {
+        var v = client.getProperty(Keys.TWS_INSTANCE_ID);
+        if (v == null || v.isBlank())
+            return DEFAULT_TWS_INSTANCE_ID;
+
+        return v.trim();
     }
 }
