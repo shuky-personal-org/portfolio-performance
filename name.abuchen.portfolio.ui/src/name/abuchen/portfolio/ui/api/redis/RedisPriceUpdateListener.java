@@ -217,6 +217,7 @@ public class RedisPriceUpdateListener
             Optional<String> symbol = readString(payload, "symbol");
             Optional<Double> priceOpt = readDouble(payload, "price");
             Optional<String> currency = readString(payload, "currency");
+            String eventInstanceId = TwsInstanceEventMatcher.eventInstanceId(payload);
 
             if (priceOpt.isEmpty())
             {
@@ -243,7 +244,8 @@ public class RedisPriceUpdateListener
                             currency.orElse(null),
                             price,
                             priceDate,
-                            eventInstant);
+                            eventInstant,
+                            eventInstanceId);
         }
         catch (JsonSyntaxException e)
         {
@@ -256,7 +258,7 @@ public class RedisPriceUpdateListener
     }
 
     private void applyPriceUpdate(String isin, String symbol, String currency, double price, LocalDate priceDate,
-                    Instant eventInstant)
+                    Instant eventInstant, String eventInstanceId)
     {
         if (!Double.isFinite(price) || price <= 0d)
         {
@@ -275,6 +277,9 @@ public class RedisPriceUpdateListener
             Client client = portfolioFileService.getPortfolio(portfolioId);
             if (client == null)
                 continue;
+
+            TwsInstanceEventMatcher.logObserveOnlyDecision(logger, CHANNEL_MARKET_PRICES, "price_update",
+                            eventInstanceId, portfolioId, client);
 
             boolean updatedPortfolio = false;
             Set<String> updatedSecurityIds = new HashSet<>();
