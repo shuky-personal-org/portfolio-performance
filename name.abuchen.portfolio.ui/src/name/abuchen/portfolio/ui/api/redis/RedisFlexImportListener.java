@@ -302,6 +302,8 @@ public class RedisFlexImportListener
                 return;
             }
 
+            String eventInstanceId = TwsInstanceEventMatcher.eventInstanceId(payload);
+
             String rawPath = readString(payload, "relative_path").orElse(readString(payload, "file_path").orElse("")); //$NON-NLS-1$ //$NON-NLS-2$
             if (rawPath.isEmpty())
             {
@@ -343,11 +345,17 @@ public class RedisFlexImportListener
             Client client = portfolioFileService.getPortfolio(targetPortfolioId);
             if (client == null)
             {
+                logger.debug(
+                                "TWS instance observe-only: channel={}, eventType={}, eventInstanceId={}, portfolioId={}, portfolioInstanceId=(not cached), wouldApply=unknown",
+                                CHANNEL_FLEX_IMPORT_READY, type, eventInstanceId, targetPortfolioId);
                 logger.warn(
                                 "Skipping Redis flex import: portfolio {} is not in cache — open it first (e.g. GET /api/v1/portfolios/{})", //$NON-NLS-1$
                                 targetPortfolioId, targetPortfolioId);
                 return;
             }
+
+            TwsInstanceEventMatcher.logObserveOnlyDecision(logger, CHANNEL_FLEX_IMPORT_READY, type,
+                            eventInstanceId, targetPortfolioId, client);
 
             Path flexReportsDir = getFlexReportsDirectory();
             Path resolvedPath = flexReportsDir.resolve(relativeFileName).normalize();
