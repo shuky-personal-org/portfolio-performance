@@ -68,6 +68,11 @@ public class ClientProperties
         client.setProperty(Keys.SECURITY_NAME_CONFIG, config.name());
     }
 
+    public void setTwsInstanceId(String twsInstanceId)
+    {
+        client.setProperty(Keys.TWS_INSTANCE_ID, twsInstanceId);
+    }
+
     public String getTwsInstanceId()
     {
         var v = client.getProperty(Keys.TWS_INSTANCE_ID);

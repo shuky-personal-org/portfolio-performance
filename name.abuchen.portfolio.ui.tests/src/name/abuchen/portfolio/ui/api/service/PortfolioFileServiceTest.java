@@ -60,6 +60,29 @@ public class PortfolioFileServiceTest
     }
 
     @Test
+    public void updatesTwsInstanceIdAndPersistsChange() throws Exception
+    {
+        var service = new PortfolioFileService(folder.getRoot().getAbsolutePath());
+        var fileInfo = service.createPortfolioFile("BrokerUpdate");
+
+        var updated = service.updateTwsInstanceId(fileInfo.getId(), "secondary", null);
+        assertThat(updated.getTwsInstanceId(), is("secondary"));
+
+        service.clearCache();
+        var reloaded = service.openFileById(fileInfo.getId(), null);
+        assertThat(reloaded.getTwsInstanceId(), is("secondary"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsUnsupportedTwsInstanceId() throws Exception
+    {
+        var service = new PortfolioFileService(folder.getRoot().getAbsolutePath());
+        var fileInfo = service.createPortfolioFile("InvalidBroker");
+
+        service.updateTwsInstanceId(fileInfo.getId(), "unknown", null);
+    }
+
+    @Test
     public void duplicatesPortfolioFile() throws Exception
     {
         var root = folder.getRoot().toPath();

@@ -44,6 +44,7 @@ import name.abuchen.portfolio.ui.api.dto.TopMoversDto;
 import name.abuchen.portfolio.ui.api.dto.TopMoversDto.TopMoverEntryDto;
 import name.abuchen.portfolio.ui.api.dto.PortfolioFileInfo;
 import name.abuchen.portfolio.ui.api.dto.PortfolioFileRequest;
+import name.abuchen.portfolio.ui.api.dto.TwsAssignmentUpdateRequest;
 import name.abuchen.portfolio.ui.api.service.QuoteFeedApiKeyService;
 import name.abuchen.portfolio.util.Interval;
 
@@ -265,6 +266,65 @@ public class PortfolioController extends BaseController {
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
                 "Failed to update base currency: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Update the TWS instance assignment custom attribute of a portfolio.
+     *
+     * @param portfolioId The portfolio ID
+     * @param request TWS instance ID and optional password for encrypted files
+     * @return Updated portfolio file information
+     */
+    @PATCH
+    @Path("/{portfolioId}/tws-assignment")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateTwsAssignment(@PathParam("portfolioId") String portfolioId,
+            TwsAssignmentUpdateRequest request) {
+        try {
+            logger.info("Updating TWS assignment for portfolio: {}", portfolioId);
+
+            if (request == null || request.getTwsInstanceId() == null || request.getTwsInstanceId().trim().isEmpty()) {
+                return createErrorResponse(Response.Status.BAD_REQUEST,
+                    "INVALID_REQUEST",
+                    "Request body must contain a twsInstanceId");
+            }
+
+            char[] passwordChars = null;
+            if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
+                passwordChars = request.getPassword().toCharArray();
+            }
+
+            PortfolioFileInfo fileInfo = portfolioFileService.updateTwsInstanceId(
+                portfolioId,
+                request.getTwsInstanceId(),
+                passwordChars);
+
+            return Response.ok(fileInfo).build();
+
+        } catch (FileNotFoundException e) {
+            logger.warn("Portfolio not found for TWS assignment update: {} - {}", portfolioId, e.getMessage());
+            return createErrorResponse(Response.Status.NOT_FOUND,
+                "PORTFOLIO_NOT_FOUND",
+                e.getMessage());
+
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid TWS assignment update request: {}", e.getMessage());
+            return createErrorResponse(Response.Status.BAD_REQUEST,
+                "INVALID_REQUEST",
+                e.getMessage());
+
+        } catch (IOException e) {
+            logger.error("Failed to update TWS assignment for portfolio: {}", portfolioId, e);
+            if (e.getMessage() != null && e.getMessage().contains("Password required")) {
+                return createErrorResponse(Response.Status.UNAUTHORIZED,
+                    "PASSWORD_REQUIRED",
+                    e.getMessage());
+            }
+            return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "Failed to update TWS assignment: " + e.getMessage());
         }
     }
 

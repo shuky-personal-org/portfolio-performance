@@ -58,6 +58,8 @@ public class PortfolioFileService {
     private static final String DEFAULT_PORTFOLIO_EXTENSION = ".portfolio";
     private static final String XML_EXTENSION = ".xml";
     private static final String DELETED_DIRECTORY_NAME = "deleted";
+    private static final Set<String> SUPPORTED_TWS_INSTANCE_IDS = Set.of(
+                    ClientProperties.DEFAULT_TWS_INSTANCE_ID, "primary", "secondary");
     
     // Singleton instance
     private static PortfolioFileService instance;
@@ -696,6 +698,63 @@ public class PortfolioFileService {
         PortfolioFileInfo fileInfo = createBasicFileInfo(file, relativePath, fileId);
         populateClientData(fileInfo, client, file);
         return fileInfo;
+    }
+
+    /**
+     * Update the TWS instance assignment custom attribute of a portfolio and persist the change.
+     *
+     * @param fileId The portfolio file ID
+     * @param twsInstanceId TWS instance ID (default, primary, secondary)
+     * @param password Optional password for encrypted files when not already cached
+     * @return Updated portfolio file information
+     * @throws IOException if the portfolio cannot be loaded or saved
+     */
+    public PortfolioFileInfo updateTwsInstanceId(String fileId, String twsInstanceId, char[] password)
+                    throws IOException {
+        String normalizedTwsInstanceId = normalizeTwsInstanceId(twsInstanceId);
+
+        String relativePath = findFileById(fileId);
+        File file = portfolioDirectory.resolve(relativePath).toFile();
+
+        Client client = getPortfolio(fileId);
+        if (client == null) {
+            validateFileAccess(file, relativePath, password);
+            client = loadClient(file, fileId, relativePath, password);
+        }
+
+        var properties = new ClientProperties(client);
+        String oldTwsInstanceId = properties.getTwsInstanceId();
+        boolean changed = !normalizedTwsInstanceId.equals(oldTwsInstanceId);
+        if (changed) {
+            properties.setTwsInstanceId(normalizedTwsInstanceId);
+            client.markDirty();
+            try {
+                saveFile(fileId);
+            } catch (IOException e) {
+                properties.setTwsInstanceId(oldTwsInstanceId);
+                throw e;
+            }
+            logger.info("Updated TWS instance assignment for portfolio {} to {}", fileId, normalizedTwsInstanceId);
+        } else {
+            logger.info("TWS instance assignment for portfolio {} already set to {}", fileId, normalizedTwsInstanceId);
+        }
+
+        PortfolioFileInfo fileInfo = createBasicFileInfo(file, relativePath, fileId);
+        populateClientData(fileInfo, client, file);
+        return fileInfo;
+    }
+
+    private String normalizeTwsInstanceId(String twsInstanceId) {
+        if (twsInstanceId == null || twsInstanceId.trim().isEmpty()) {
+            throw new IllegalArgumentException("TWS instance ID is required");
+        }
+
+        String normalized = twsInstanceId.trim();
+        if (!SUPPORTED_TWS_INSTANCE_IDS.contains(normalized)) {
+            throw new IllegalArgumentException("Unsupported TWS instance ID: " + normalized);
+        }
+
+        return normalized;
     }
 
     /**
