@@ -278,8 +278,10 @@ public class RedisPriceUpdateListener
             if (client == null)
                 continue;
 
-            TwsInstanceEventMatcher.logObserveOnlyDecision(logger, CHANNEL_MARKET_PRICES, "price_update",
+            TwsInstanceEventMatcher.logFilterDecision(logger, CHANNEL_MARKET_PRICES, "price_update",
                             eventInstanceId, portfolioId, client);
+            if (!TwsInstanceEventMatcher.matches(eventInstanceId, client))
+                continue;
 
             boolean updatedPortfolio = false;
             Set<String> updatedSecurityIds = new HashSet<>();
