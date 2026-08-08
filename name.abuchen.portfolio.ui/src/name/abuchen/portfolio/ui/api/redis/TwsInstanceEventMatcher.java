@@ -43,13 +43,18 @@ final class TwsInstanceEventMatcher
         return new ClientProperties(client).getTwsInstanceId();
     }
 
-    static boolean matches(String eventInstanceId, Client client)
+    static String canonicalInstanceId(String instanceId)
     {
-        return portfolioInstanceId(client).equals(eventInstanceId(eventInstanceId == null ? Optional.empty()
-                        : Optional.of(eventInstanceId)));
+        String normalized = eventInstanceId(instanceId == null ? Optional.empty() : Optional.of(instanceId));
+        return ClientProperties.DEFAULT_TWS_INSTANCE_ID.equals(normalized) ? "primary" : normalized;
     }
 
-    static void logObserveOnlyDecision(Logger logger, String channel, String eventType, String eventInstanceId,
+    static boolean matches(String eventInstanceId, Client client)
+    {
+        return canonicalInstanceId(portfolioInstanceId(client)).equals(canonicalInstanceId(eventInstanceId));
+    }
+
+    static void logFilterDecision(Logger logger, String channel, String eventType, String eventInstanceId,
                     String portfolioId, Client client)
     {
         if (logger == null || !logger.isDebugEnabled())
@@ -60,8 +65,8 @@ final class TwsInstanceEventMatcher
         String portfolioInstanceId = portfolioInstanceId(client);
 
         logger.debug(
-                        "TWS instance observe-only: channel={}, eventType={}, eventInstanceId={}, portfolioId={}, portfolioInstanceId={}, wouldApply={}",
+                        "TWS instance filter: channel={}, eventType={}, eventInstanceId={}, portfolioId={}, portfolioInstanceId={}, applies={}",
                         channel, eventType, normalizedEventInstanceId, portfolioId, portfolioInstanceId,
-                        portfolioInstanceId.equals(normalizedEventInstanceId));
+                        matches(eventInstanceId, client));
     }
 }
