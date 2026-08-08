@@ -60,13 +60,24 @@ public class TwsInstanceEventMatcherTest
     }
 
     @Test
-    public void treatsDefaultPortfolioAssignmentAsPrimaryAlias()
+    public void allowsPrimaryAssignmentToUseLegacyDefaultEvents()
+    {
+        Client client = new Client();
+        client.setProperty(ClientProperties.Keys.TWS_INSTANCE_ID, "primary");
+
+        assertThat(TwsInstanceEventMatcher.matches(ClientProperties.DEFAULT_TWS_INSTANCE_ID, client), is(true));
+        assertThat(TwsInstanceEventMatcher.matches("secondary", client), is(false));
+    }
+
+    @Test
+    public void keepsDefaultPortfolioAssignmentSeparateFromPrimaryEvents()
     {
         Client client = new Client();
 
         assertThat(TwsInstanceEventMatcher.portfolioInstanceId(client),
                         is(ClientProperties.DEFAULT_TWS_INSTANCE_ID));
-        assertThat(TwsInstanceEventMatcher.matches("primary", client), is(true));
+        assertThat(TwsInstanceEventMatcher.matches(ClientProperties.DEFAULT_TWS_INSTANCE_ID, client), is(true));
+        assertThat(TwsInstanceEventMatcher.matches("primary", client), is(false));
         assertThat(TwsInstanceEventMatcher.matches("secondary", client), is(false));
     }
 }

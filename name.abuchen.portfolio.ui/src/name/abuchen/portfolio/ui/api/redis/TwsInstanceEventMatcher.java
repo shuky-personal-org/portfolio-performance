@@ -43,15 +43,17 @@ final class TwsInstanceEventMatcher
         return new ClientProperties(client).getTwsInstanceId();
     }
 
-    static String canonicalInstanceId(String instanceId)
-    {
-        String normalized = eventInstanceId(instanceId == null ? Optional.empty() : Optional.of(instanceId));
-        return ClientProperties.DEFAULT_TWS_INSTANCE_ID.equals(normalized) ? "primary" : normalized;
-    }
-
     static boolean matches(String eventInstanceId, Client client)
     {
-        return canonicalInstanceId(portfolioInstanceId(client)).equals(canonicalInstanceId(eventInstanceId));
+        String normalizedEventInstanceId = eventInstanceId(
+                        eventInstanceId == null ? Optional.empty() : Optional.of(eventInstanceId));
+        String normalizedPortfolioInstanceId = portfolioInstanceId(client);
+
+        if (normalizedPortfolioInstanceId.equals(normalizedEventInstanceId))
+            return true;
+
+        return "primary".equals(normalizedPortfolioInstanceId)
+                        && ClientProperties.DEFAULT_TWS_INSTANCE_ID.equals(normalizedEventInstanceId);
     }
 
     static void logFilterDecision(Logger logger, String channel, String eventType, String eventInstanceId,
