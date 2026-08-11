@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import org.junit.Test;
 
 import name.abuchen.portfolio.junit.PortfolioBuilder;
+import name.abuchen.portfolio.junit.AccountBuilder;
 import name.abuchen.portfolio.junit.SecurityBuilder;
 import name.abuchen.portfolio.junit.TestCurrencyConverter;
 import name.abuchen.portfolio.model.Client;
@@ -99,5 +100,36 @@ public class SecurityPerformanceSnapshotTest
 
         assertThat(position.getShares(), is(record.getSharesHeld()));
         assertThat(position.calculateValue(), is(record.getMarketValue()));
+    }
+
+    @Test
+    public void testHoldingsIndicatorsSkipRateOfReturn()
+    {
+        Client client = new Client();
+
+        Security security = new SecurityBuilder().addTo(client);
+
+        new PortfolioBuilder()
+                        .buy(security, "2024-01-10", Values.Share.factorize(10), Values.Amount.factorize(1000))
+                        .buy(security, "2024-06-01", Values.Share.factorize(5), Values.Amount.factorize(600))
+                        .addTo(client);
+
+        new AccountBuilder().dividend("2024-03-01", Values.Amount.factorize(25), security).addTo(client);
+
+        Interval interval = Interval.of(LocalDate.parse("2024-01-01"), LocalDate.parse("2024-12-31"));
+        SecurityPerformanceSnapshot fullSnapshot = SecurityPerformanceSnapshot.create(client, new TestCurrencyConverter(),
+                        interval);
+        SecurityPerformanceSnapshot holdingsSnapshot = SecurityPerformanceSnapshot.create(client,
+                        new TestCurrencyConverter(), interval, SecurityPerformanceIndicator.Costs.class,
+                        SecurityPerformanceIndicator.Dividends.class);
+
+        SecurityPerformanceRecord fullRecord = fullSnapshot.getRecords().get(0);
+        SecurityPerformanceRecord holdingsRecord = holdingsSnapshot.getRecords().get(0);
+
+        assertThat(holdingsRecord.getSharesHeld(), is(fullRecord.getSharesHeld()));
+        assertThat(holdingsRecord.getMarketValue(), is(fullRecord.getMarketValue()));
+        assertThat(holdingsRecord.getCapitalGainsOnHoldings(), is(fullRecord.getCapitalGainsOnHoldings()));
+        assertThat(holdingsRecord.getSumOfDividends(), is(fullRecord.getSumOfDividends()));
+        assertThat(holdingsRecord.getTrueTimeWeightedRateOfReturn(), is(0d));
     }
 }
