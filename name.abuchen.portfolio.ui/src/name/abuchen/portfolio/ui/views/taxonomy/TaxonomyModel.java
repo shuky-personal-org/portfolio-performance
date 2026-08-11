@@ -159,7 +159,12 @@ public final class TaxonomyModel
             }
 
             for (Assignment assignment : classification.getAssignments())
+            {
+                if (assignment.getInvestmentVehicle() == null)
+                    continue;
+
                 m.getChildren().add(new AssignmentNode(m, assignment));
+            }
 
             Collections.sort(m.getChildren(), (o1, o2) -> Integer.compare(o1.getRank(), o2.getRank()));
         }
@@ -246,6 +251,11 @@ public final class TaxonomyModel
         if (node.isAssignment())
         {
             Assignment assignment = node.getAssignment();
+            if (assignment.getInvestmentVehicle() == null)
+            {
+                node.setActual(actual.toMoney());
+                return;
+            }
 
             AssetPosition p = snapshot.getPositionsByVehicle().get(assignment.getInvestmentVehicle());
 

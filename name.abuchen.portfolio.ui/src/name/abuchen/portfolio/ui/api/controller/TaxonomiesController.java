@@ -244,12 +244,10 @@ public class TaxonomiesController extends BaseController {
             client.markDirty();
             portfolioFileService.saveFile(portfolioId);
 
-            TaxonomyDto taxonomyDto = convertTaxonomyToDto(taxonomy, client);
-
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("portfolioId", portfolioId);
-            response.put("taxonomy", taxonomyDto);
+            response.put("taxonomyId", taxonomyId);
             response.put("message", "Taxonomy updated successfully");
 
             logger.info("Updated taxonomy {} ({}) for portfolio {}", taxonomy.getName(), taxonomyId, portfolioId);
@@ -940,8 +938,18 @@ public class TaxonomiesController extends BaseController {
         if (parentNode == null) return null;
         
         for (TaxonomyNode child : parentNode.getChildren()) {
-            if (child.isAssignment() && 
-                child.getAssignment().getInvestmentVehicle().equals(assignment.getInvestmentVehicle())) {
+            if (!child.isAssignment())
+                continue;
+
+            var nodeAssignment = child.getAssignment();
+            if (nodeAssignment == null)
+                continue;
+
+            var nodeVehicle = nodeAssignment.getInvestmentVehicle();
+            if (nodeVehicle == null)
+                continue;
+
+            if (nodeVehicle.equals(assignment.getInvestmentVehicle())) {
                 return child;
             }
         }
