@@ -124,8 +124,10 @@ public class FlexImportService
      * @param file The Flex report XML file
      * @param currencyAccountMap Map of currency -> primary account UUID
      * @param currencySecondaryAccountMap Map of currency -> secondary account UUID
-     * @param portfolioUUID Primary portfolio UUID
-     * @param secondaryPortfolioUUID Secondary portfolio UUID (can be null)
+     * @param portfolioUUID Primary portfolio UUID fallback
+     * @param secondaryPortfolioUUID Secondary portfolio UUID fallback (can be null)
+     * @param currencyPortfolioMap Map of currency -> primary portfolio UUID
+     * @param currencySecondaryPortfolioMap Map of currency -> secondary portfolio UUID
      * @param convertBuySellToDelivery Whether to convert BuySell transactions to Delivery
      * @param removeDividends Whether to remove dividends
      * @param importNotes Whether to import notes from source
@@ -134,8 +136,9 @@ public class FlexImportService
     public ImportResult importFlexReport(Client client, File file,
                     Map<String, String> currencyAccountMap,
                     Map<String, String> currencySecondaryAccountMap, String portfolioUUID,
-                    String secondaryPortfolioUUID, boolean convertBuySellToDelivery,
-                    boolean removeDividends, boolean importNotes)
+                    String secondaryPortfolioUUID, Map<String, String> currencyPortfolioMap,
+                    Map<String, String> currencySecondaryPortfolioMap,
+                    boolean convertBuySellToDelivery, boolean removeDividends, boolean importNotes)
     {
         // Build account mappings
         Map<String, Account> primaryAccounts = new HashMap<>();
@@ -172,32 +175,28 @@ public class FlexImportService
             secondaryAccounts.put(account.getCurrencyCode(), account);
         }
 
-        // Get portfolios
-        Portfolio primaryPortfolio = client.getPortfolios().stream()
-                        .filter(p -> portfolioUUID.equals(p.getUUID()))
-                        .findFirst()
-                        .orElse(null);
+        Map<String, Portfolio> primaryPortfolios = new HashMap<>();
+        Map<String, Portfolio> secondaryPortfolios = new HashMap<>();
+        List<String> portfolioErrors = new ArrayList<>();
+        resolvePortfolioMaps(client, emptyIfNull(currencyPortfolioMap), emptyIfNull(currencySecondaryPortfolioMap),
+                        primaryPortfolios, secondaryPortfolios, portfolioErrors, true);
+        if (!portfolioErrors.isEmpty())
+        {
+            return new ImportResult(false, portfolioErrors, 0);
+        }
+
+        Portfolio primaryPortfolio = findPortfolio(client, portfolioUUID);
+        if (primaryPortfolio == null)
+            primaryPortfolio = firstPortfolio(primaryPortfolios);
         if (primaryPortfolio == null)
         {
             return new ImportResult(false,
                             List.of(MessageFormat.format("Portfolio with UUID {0} not found", portfolioUUID)), 0);
         }
 
-        Portfolio secondaryPortfolio = null;
-        if (secondaryPortfolioUUID != null && !secondaryPortfolioUUID.isEmpty())
-        {
-            secondaryPortfolio = client.getPortfolios().stream()
-                            .filter(p -> secondaryPortfolioUUID.equals(p.getUUID()))
-                            .findFirst()
-                            .orElse(null);
-            if (secondaryPortfolio == null)
-            {
-                return new ImportResult(false,
-                                List.of(MessageFormat.format("Secondary portfolio with UUID {0} not found",
-                                                secondaryPortfolioUUID)),
-                                0);
-            }
-        }
+        Portfolio secondaryPortfolio = findPortfolio(client, secondaryPortfolioUUID);
+        if (secondaryPortfolio == null)
+            secondaryPortfolio = firstPortfolio(secondaryPortfolios);
 
         // Extract items from file
         IBFlexStatementExtractor extractor = new IBFlexStatementExtractor(client);
@@ -205,6 +204,8 @@ public class FlexImportService
         List<Extractor.InputFile> inputFiles = List.of(new Extractor.InputFile(file));
 
         List<Extractor.Item> extractedItems = extractor.extract(inputFiles, extractionErrors);
+        assignPortfoliosByCurrency(extractedItems, primaryPortfolios, secondaryPortfolios, primaryPortfolio,
+                        secondaryPortfolio);
 
         // Convert to ExtractedEntry list
         List<ExtractedEntry> entries = extractedItems.stream()
@@ -275,14 +276,17 @@ public class FlexImportService
      * @param file The Flex report XML file
      * @param currencyAccountMap Map of currency -> primary account UUID
      * @param currencySecondaryAccountMap Map of currency -> secondary account UUID
-     * @param portfolioUUID Primary portfolio UUID
-     * @param secondaryPortfolioUUID Secondary portfolio UUID (can be null)
+     * @param portfolioUUID Primary portfolio UUID fallback
+     * @param secondaryPortfolioUUID Secondary portfolio UUID fallback (can be null)
+     * @param currencyPortfolioMap Map of currency -> primary portfolio UUID
+     * @param currencySecondaryPortfolioMap Map of currency -> secondary portfolio UUID
      * @return FlexImportPreviewResponse containing all extracted entries with their status
      */
     public FlexImportPreviewResponse previewFlexReport(Client client, File file,
                     Map<String, String> currencyAccountMap,
                     Map<String, String> currencySecondaryAccountMap, String portfolioUUID,
-                    String secondaryPortfolioUUID)
+                    String secondaryPortfolioUUID, Map<String, String> currencyPortfolioMap,
+                    Map<String, String> currencySecondaryPortfolioMap)
     {
         // Build account mappings
         Map<String, Account> primaryAccounts = new HashMap<>();
@@ -308,24 +312,18 @@ public class FlexImportService
                 secondaryAccounts.put(account.getCurrencyCode(), account);
         }
 
-        // Get portfolios
-        Portfolio primaryPortfolio = client.getPortfolios().stream()
-                        .filter(p -> portfolioUUID.equals(p.getUUID()))
-                        .findFirst()
-                        .orElse(null);
+        Map<String, Portfolio> primaryPortfolios = new HashMap<>();
+        Map<String, Portfolio> secondaryPortfolios = new HashMap<>();
+        resolvePortfolioMaps(client, emptyIfNull(currencyPortfolioMap), emptyIfNull(currencySecondaryPortfolioMap),
+                        primaryPortfolios, secondaryPortfolios, new ArrayList<>(), false);
 
-        final Portfolio secondaryPortfolio;
-        if (secondaryPortfolioUUID != null && !secondaryPortfolioUUID.isEmpty())
-        {
-            secondaryPortfolio = client.getPortfolios().stream()
-                            .filter(p -> secondaryPortfolioUUID.equals(p.getUUID()))
-                            .findFirst()
-                            .orElse(null);
-        }
-        else
-        {
-            secondaryPortfolio = null;
-        }
+        Portfolio primaryPortfolio = findPortfolio(client, portfolioUUID);
+        if (primaryPortfolio == null)
+            primaryPortfolio = firstPortfolio(primaryPortfolios);
+
+        Portfolio secondaryPortfolio = findPortfolio(client, secondaryPortfolioUUID);
+        if (secondaryPortfolio == null)
+            secondaryPortfolio = firstPortfolio(secondaryPortfolios);
 
         // Extract items from file
         IBFlexStatementExtractor extractor = new IBFlexStatementExtractor(client);
@@ -333,6 +331,8 @@ public class FlexImportService
         List<Extractor.InputFile> inputFiles = List.of(new Extractor.InputFile(file));
 
         List<Extractor.Item> extractedItems = extractor.extract(inputFiles, extractionErrors);
+        assignPortfoliosByCurrency(extractedItems, primaryPortfolios, secondaryPortfolios, primaryPortfolio,
+                        secondaryPortfolio);
 
         // Convert to ExtractedEntry list
         List<ExtractedEntry> entries = extractedItems.stream()
@@ -540,6 +540,77 @@ public class FlexImportService
                                 .filter(s -> s.getCode() == Code.ERROR)
                                 .forEach(status -> allErrors.add(MessageFormat.format(Messages.LabelColonSeparated,
                                                 status.getMessage(), entry.getItem().toString())));
+            }
+        }
+    }
+
+    private static Map<String, String> emptyIfNull(Map<String, String> map)
+    {
+        return map != null ? map : Map.of();
+    }
+
+    private static Portfolio findPortfolio(Client client, String uuid)
+    {
+        if (uuid == null || uuid.isEmpty())
+            return null;
+        return client.getPortfolios().stream().filter(p -> uuid.equals(p.getUUID())).findFirst().orElse(null);
+    }
+
+    private static Portfolio firstPortfolio(Map<String, Portfolio> portfolios)
+    {
+        return portfolios.values().stream().filter(portfolio -> portfolio != null).findFirst().orElse(null);
+    }
+
+    private static void resolvePortfolioMaps(Client client, Map<String, String> currencyPortfolioMap,
+                    Map<String, String> currencySecondaryPortfolioMap, Map<String, Portfolio> primaryPortfolios,
+                    Map<String, Portfolio> secondaryPortfolios, List<String> errors, boolean failOnMissing)
+    {
+        for (Map.Entry<String, String> entry : currencyPortfolioMap.entrySet())
+        {
+            Portfolio portfolio = findPortfolio(client, entry.getValue());
+            if (portfolio == null)
+            {
+                if (failOnMissing)
+                    errors.add(MessageFormat.format("Portfolio with UUID {0} not found", entry.getValue()));
+                continue;
+            }
+            primaryPortfolios.put(entry.getKey(), portfolio);
+        }
+
+        for (Map.Entry<String, String> entry : currencySecondaryPortfolioMap.entrySet())
+        {
+            Portfolio portfolio = findPortfolio(client, entry.getValue());
+            if (portfolio == null)
+            {
+                if (failOnMissing)
+                    errors.add(MessageFormat.format("Secondary portfolio with UUID {0} not found", entry.getValue()));
+                continue;
+            }
+            secondaryPortfolios.put(entry.getKey(), portfolio);
+        }
+    }
+
+    private static void assignPortfoliosByCurrency(List<Extractor.Item> items, Map<String, Portfolio> primaryPortfolios,
+                    Map<String, Portfolio> secondaryPortfolios, Portfolio fallbackPrimary, Portfolio fallbackSecondary)
+    {
+        for (Extractor.Item item : items)
+        {
+            String currency = item.getAmount() != null ? item.getAmount().getCurrencyCode() : null;
+            if (item.getPortfolioPrimary() == null)
+            {
+                Portfolio mapped = currency != null ? primaryPortfolios.get(currency) : null;
+                if (mapped == null)
+                    mapped = fallbackPrimary;
+                if (mapped != null)
+                    item.setPortfolioPrimary(mapped);
+            }
+            if (item.getPortfolioSecondary() == null)
+            {
+                Portfolio mapped = currency != null ? secondaryPortfolios.get(currency) : null;
+                if (mapped == null)
+                    mapped = fallbackSecondary;
+                if (mapped != null)
+                    item.setPortfolioSecondary(mapped);
             }
         }
     }

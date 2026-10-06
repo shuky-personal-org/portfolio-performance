@@ -330,15 +330,20 @@ public class RedisFlexImportListener
                             .orElse(Map.of());
             Map<String, String> targetCurrencySecondaryAccountMap = readStringMap(importConfig,
                             "currencySecondaryAccountMap").orElse(Map.of()); //$NON-NLS-1$
+            Map<String, String> targetCurrencyPortfolioMap = readStringMap(importConfig, "currencyPortfolioMap") //$NON-NLS-1$
+                            .orElse(Map.of());
+            Map<String, String> targetCurrencySecondaryPortfolioMap = readStringMap(importConfig,
+                            "currencySecondaryPortfolioMap").orElse(Map.of()); //$NON-NLS-1$
             boolean targetConvertBuySellToDelivery = readBoolean(importConfig, "convertBuySellToDelivery") //$NON-NLS-1$
                             .orElse(false);
             boolean targetRemoveDividends = readBoolean(importConfig, "removeDividends").orElse(false); //$NON-NLS-1$
             boolean targetImportNotes = readBoolean(importConfig, "importNotes").orElse(true); //$NON-NLS-1$
 
-            if (targetPortfolioId.isEmpty() || targetPortfolioUuid.isEmpty() || targetCurrencyAccountMap.isEmpty())
+            if (targetPortfolioId.isEmpty() || targetCurrencyAccountMap.isEmpty()
+                            || (targetPortfolioUuid.isEmpty() && targetCurrencyPortfolioMap.isEmpty()))
             {
                 logger.warn(
-                                "Skipping Redis flex import: portfolio_id, portfolioUUID, or currencyAccountMap missing in message"); //$NON-NLS-1$
+                                "Skipping Redis flex import: portfolio_id, currencyAccountMap, or currencyPortfolioMap/portfolioUUID missing in message"); //$NON-NLS-1$
                 return;
             }
 
@@ -378,6 +383,7 @@ public class RedisFlexImportListener
 
             FlexImportService.ImportResult result = service.importFlexReport(client, file, targetCurrencyAccountMap,
                             secondary, targetPortfolioUuid, targetSecondaryPortfolioUuid.orElse(null),
+                            targetCurrencyPortfolioMap, targetCurrencySecondaryPortfolioMap,
                             targetConvertBuySellToDelivery, targetRemoveDividends, targetImportNotes);
 
             if (result.getItemsImported() > 0)

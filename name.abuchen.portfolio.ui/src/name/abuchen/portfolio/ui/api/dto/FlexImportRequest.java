@@ -18,6 +18,16 @@ public class FlexImportRequest
     private Map<String, String> currencySecondaryAccountMap;
 
     /**
+     * Map of currency code to primary portfolio UUID.
+     */
+    private Map<String, String> currencyPortfolioMap;
+
+    /**
+     * Map of currency code to secondary portfolio UUID (for transfers).
+     */
+    private Map<String, String> currencySecondaryPortfolioMap;
+
+    /**
      * Primary portfolio UUID.
      */
     private String portfolioUUID;
@@ -75,6 +85,26 @@ public class FlexImportRequest
     public void setCurrencySecondaryAccountMap(Map<String, String> currencySecondaryAccountMap)
     {
         this.currencySecondaryAccountMap = currencySecondaryAccountMap;
+    }
+
+    public Map<String, String> getCurrencyPortfolioMap()
+    {
+        return currencyPortfolioMap;
+    }
+
+    public void setCurrencyPortfolioMap(Map<String, String> currencyPortfolioMap)
+    {
+        this.currencyPortfolioMap = currencyPortfolioMap;
+    }
+
+    public Map<String, String> getCurrencySecondaryPortfolioMap()
+    {
+        return currencySecondaryPortfolioMap;
+    }
+
+    public void setCurrencySecondaryPortfolioMap(Map<String, String> currencySecondaryPortfolioMap)
+    {
+        this.currencySecondaryPortfolioMap = currencySecondaryPortfolioMap;
     }
 
     public String getPortfolioUUID()

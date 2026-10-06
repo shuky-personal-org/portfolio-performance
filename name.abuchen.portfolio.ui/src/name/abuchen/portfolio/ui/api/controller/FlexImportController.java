@@ -212,8 +212,10 @@ public class FlexImportController extends BaseController
      * - filePath: Relative file path to Flex report XML file (relative to Flex reports directory)
      * - currencyAccountMap: Map of currency code to primary account UUID
      * - currencySecondaryAccountMap: Map of currency code to secondary account UUID (optional)
-     * - portfolioUUID: Primary portfolio UUID
-     * - secondaryPortfolioUUID: Secondary portfolio UUID (optional)
+     * - currencyPortfolioMap: Map of currency code to primary portfolio UUID
+     * - currencySecondaryPortfolioMap: Map of currency code to secondary portfolio UUID (optional)
+     * - portfolioUUID: Primary portfolio UUID fallback
+     * - secondaryPortfolioUUID: Secondary portfolio UUID fallback (optional)
      * - convertBuySellToDelivery: Whether to convert BuySell transactions to Delivery
      * - removeDividends: Whether to remove dividends
      * - importNotes: Whether to import notes from source
@@ -250,15 +252,18 @@ public class FlexImportController extends BaseController
                                 "currencyAccountMap is required");
             }
 
-            if (request.getPortfolioUUID() == null || request.getPortfolioUUID().isEmpty())
+            if (!hasPortfolioConfig(request))
             {
-                logger.warn("Flex import request missing portfolioUUID for portfolio: {}", portfolioId);
+                logger.warn("Flex import request missing portfolioUUID or currencyPortfolioMap for portfolio: {}",
+                                portfolioId);
                 return createErrorResponse(Response.Status.BAD_REQUEST, "MISSING_CONFIG",
-                                "portfolioUUID is required");
+                                "currencyPortfolioMap or portfolioUUID is required");
             }
 
-            logger.debug("Flex import request validated - portfolioUUID: {}, currencies: {}, options: convertBuySellToDelivery={}, removeDividends={}, importNotes={}",
-                            request.getPortfolioUUID(), request.getCurrencyAccountMap().keySet(),
+            logger.debug("Flex import request validated - portfolioUUID: {}, currencyPortfolioMap: {}, currencies: {}, options: convertBuySellToDelivery={}, removeDividends={}, importNotes={}",
+                            request.getPortfolioUUID(),
+                            request.getCurrencyPortfolioMap() != null ? request.getCurrencyPortfolioMap().keySet() : null,
+                            request.getCurrencyAccountMap().keySet(),
                             request.isConvertBuySellToDelivery(), request.isRemoveDividends(), request.isImportNotes());
 
             // Resolve file path relative to Flex reports directory
@@ -287,8 +292,9 @@ public class FlexImportController extends BaseController
             FlexImportService service = new FlexImportService();
             FlexImportService.ImportResult result = service.importFlexReport(client, file,
                             currencyAccountMap, currencySecondaryAccountMap, request.getPortfolioUUID(),
-                            request.getSecondaryPortfolioUUID(), request.isConvertBuySellToDelivery(),
-                            request.isRemoveDividends(), request.isImportNotes());
+                            request.getSecondaryPortfolioUUID(), emptyIfNull(request.getCurrencyPortfolioMap()),
+                            emptyIfNull(request.getCurrencySecondaryPortfolioMap()),
+                            request.isConvertBuySellToDelivery(), request.isRemoveDividends(), request.isImportNotes());
 
             // Save client if any items were imported
             if (result.getItemsImported() > 0)
@@ -375,11 +381,12 @@ public class FlexImportController extends BaseController
                                 "currencyAccountMap is required");
             }
 
-            if (request.getPortfolioUUID() == null || request.getPortfolioUUID().isEmpty())
+            if (!hasPortfolioConfig(request))
             {
-                logger.warn("Flex import preview request missing portfolioUUID for portfolio: {}", portfolioId);
+                logger.warn("Flex import preview request missing portfolioUUID or currencyPortfolioMap for portfolio: {}",
+                                portfolioId);
                 return createErrorResponse(Response.Status.BAD_REQUEST, "MISSING_CONFIG",
-                                "portfolioUUID is required");
+                                "currencyPortfolioMap or portfolioUUID is required");
             }
 
             // Resolve file path relative to Flex reports directory
@@ -408,7 +415,8 @@ public class FlexImportController extends BaseController
             FlexImportService service = new FlexImportService();
             FlexImportPreviewResponse preview = service.previewFlexReport(client, file,
                             currencyAccountMap, currencySecondaryAccountMap, request.getPortfolioUUID(),
-                            request.getSecondaryPortfolioUUID());
+                            request.getSecondaryPortfolioUUID(), emptyIfNull(request.getCurrencyPortfolioMap()),
+                            emptyIfNull(request.getCurrencySecondaryPortfolioMap()));
 
             logger.info("Flex import preview completed - portfolio: {}, file: {}, total entries: {}, errors: {}, warnings: {}, ok: {}",
                             portfolioId, request.getFilePath(), preview.getTotalEntries(),
@@ -423,6 +431,18 @@ public class FlexImportController extends BaseController
             return createErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
                             "Unexpected error: " + e.getMessage());
         }
+    }
+
+    private static boolean hasPortfolioConfig(FlexImportRequest request)
+    {
+        boolean hasUuid = request.getPortfolioUUID() != null && !request.getPortfolioUUID().isEmpty();
+        boolean hasMap = request.getCurrencyPortfolioMap() != null && !request.getCurrencyPortfolioMap().isEmpty();
+        return hasUuid || hasMap;
+    }
+
+    private static Map<String, String> emptyIfNull(Map<String, String> map)
+    {
+        return map != null ? map : new HashMap<>();
     }
 }
 
