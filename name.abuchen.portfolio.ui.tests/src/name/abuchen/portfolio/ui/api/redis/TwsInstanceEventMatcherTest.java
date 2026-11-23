@@ -80,4 +80,52 @@ public class TwsInstanceEventMatcherTest
         assertThat(TwsInstanceEventMatcher.matches("primary", client), is(false));
         assertThat(TwsInstanceEventMatcher.matches("secondary", client), is(false));
     }
+
+    @Test
+    public void filteringIsOffUnlessExplicitlyEnabled()
+    {
+        assertThat(TwsInstanceEventMatcher.isEnforced(null), is(false));
+        assertThat(TwsInstanceEventMatcher.isEnforced(""), is(false));
+        assertThat(TwsInstanceEventMatcher.isEnforced("false"), is(false));
+        assertThat(TwsInstanceEventMatcher.isEnforced("1"), is(false));
+        assertThat(TwsInstanceEventMatcher.isEnforced("true"), is(true));
+        assertThat(TwsInstanceEventMatcher.isEnforced(" TRUE "), is(true));
+    }
+
+    @Test
+    public void everyEventAppliesWhileFilteringIsOff()
+    {
+        Client client = new Client();
+
+        assertThat(TwsInstanceEventMatcher.applies(false, ClientProperties.DEFAULT_TWS_INSTANCE_ID, client), is(true));
+        assertThat(TwsInstanceEventMatcher.applies(false, "secondary", client), is(true));
+        assertThat(TwsInstanceEventMatcher.applies(false, null, client), is(true));
+    }
+
+    @Test
+    public void onlyMatchingEventsApplyWhileFilteringIsOn()
+    {
+        Client defaultPortfolio = new Client();
+        Client primaryPortfolio = new Client();
+        Client secondaryPortfolio = new Client();
+        primaryPortfolio.setProperty(ClientProperties.Keys.TWS_INSTANCE_ID, "primary");
+        secondaryPortfolio.setProperty(ClientProperties.Keys.TWS_INSTANCE_ID, "secondary");
+
+        assertThat(TwsInstanceEventMatcher.applies(true, ClientProperties.DEFAULT_TWS_INSTANCE_ID, defaultPortfolio),
+                        is(true));
+        assertThat(TwsInstanceEventMatcher.applies(true, null, defaultPortfolio), is(true));
+        assertThat(TwsInstanceEventMatcher.applies(true, "secondary", defaultPortfolio), is(false));
+        assertThat(TwsInstanceEventMatcher.applies(true, "primary", defaultPortfolio), is(false));
+
+        assertThat(TwsInstanceEventMatcher.applies(true, "primary", primaryPortfolio), is(true));
+        assertThat(TwsInstanceEventMatcher.applies(true, ClientProperties.DEFAULT_TWS_INSTANCE_ID, primaryPortfolio),
+                        is(true));
+        assertThat(TwsInstanceEventMatcher.applies(true, null, primaryPortfolio), is(true));
+        assertThat(TwsInstanceEventMatcher.applies(true, "secondary", primaryPortfolio), is(false));
+
+        assertThat(TwsInstanceEventMatcher.applies(true, "secondary", secondaryPortfolio), is(true));
+        assertThat(TwsInstanceEventMatcher.applies(true, ClientProperties.DEFAULT_TWS_INSTANCE_ID, secondaryPortfolio),
+                        is(false));
+        assertThat(TwsInstanceEventMatcher.applies(true, null, secondaryPortfolio), is(false));
+    }
 }

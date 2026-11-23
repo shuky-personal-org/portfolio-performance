@@ -7,6 +7,13 @@ DISPLAY="${DISPLAY:-:0}"
 SCREEN_GEOM="${SCREEN_GEOM:-1920x1080x24}"
 RFB_PORT="${RFB_PORT:-5900}"
 
+# Clean up stale X11 lock files from a previous run. They survive a container
+# restart (the filesystem is kept), and Xvfb refuses to start while they exist:
+# "Server is already active for display 0".
+DISPLAY_NUM="${DISPLAY#:}"
+rm -f "/tmp/.X${DISPLAY_NUM}-lock"
+rm -f "/tmp/.X11-unix/X${DISPLAY_NUM}"
+
 echo "Starting Xvfb on ${DISPLAY} with geometry ${SCREEN_GEOM}"
 
 # Start Xvfb (headless X server)

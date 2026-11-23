@@ -280,7 +280,7 @@ public class RedisPriceUpdateListener
 
             TwsInstanceEventMatcher.logFilterDecision(logger, CHANNEL_MARKET_PRICES, "price_update",
                             eventInstanceId, portfolioId, client);
-            if (!TwsInstanceEventMatcher.matches(eventInstanceId, client))
+            if (!TwsInstanceEventMatcher.applies(eventInstanceId, client))
                 continue;
 
             boolean updatedPortfolio = false;

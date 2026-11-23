@@ -22,7 +22,6 @@ public class TaxonomyModelStaleAssignmentTest
     {
         var client = new Client();
         var security = new Security("Stale Holding", CurrencyUnit.EUR);
-        client.addSecurity(security);
 
         var taxonomy = new Taxonomy("Asset Classes");
         var root = new Classification(null, "root", "Asset Classes");
@@ -31,9 +30,6 @@ public class TaxonomyModelStaleAssignmentTest
         var equities = new Classification(root, "equities-id", "Equities");
         root.addChild(equities);
         equities.addAssignment(new Assignment(security, Classification.ONE_HUNDRED_PERCENT));
-
-        // Simulate stale state: assignment remains but security was dropped without cleanup
-        client.getSecurities().remove(security);
 
         var factory = new ExchangeRateProviderFactory(client);
         var model = new TaxonomyModel(factory, client, taxonomy);

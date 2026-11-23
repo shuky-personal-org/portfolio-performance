@@ -431,6 +431,10 @@ public final class SecurityPerformanceRecord extends BaseSecurityPerformanceReco
                 calculateTTWROR(client, converter, interval);
                 calculateDelta(converter);
             }
+            else if (flags.contains(SecurityPerformanceIndicator.RateOfReturn.class))
+            {
+                calculateTTWROR(client, converter, interval);
+            }
 
             if (flags.isEmpty() || flags.contains(SecurityPerformanceIndicator.Costs.class))
             {
@@ -441,6 +445,10 @@ public final class SecurityPerformanceRecord extends BaseSecurityPerformanceReco
             {
                 calculateDividends(converter);
                 calculatePeriodicity(client, converter);
+            }
+            else if (flags.contains(SecurityPerformanceIndicator.Dividends.class))
+            {
+                calculateDividends(converter);
             }
 
             if (flags.isEmpty() || flags.contains(SecurityPerformanceIndicator.CapitalGains.class))

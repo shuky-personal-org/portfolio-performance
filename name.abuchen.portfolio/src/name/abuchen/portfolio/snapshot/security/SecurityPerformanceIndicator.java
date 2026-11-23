@@ -28,4 +28,14 @@ public interface SecurityPerformanceIndicator
         public TrailRecord getForexCapitalGainsTrail();
     }
 
+    /** Marker for dividend totals used by holdings summaries. */
+    public interface Dividends extends SecurityPerformanceIndicator
+    {
+    }
+
+    /** Marker for time-weighted rate of return calculations. */
+    public interface RateOfReturn extends SecurityPerformanceIndicator
+    {
+    }
+
 }

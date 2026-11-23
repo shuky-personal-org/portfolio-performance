@@ -115,6 +115,163 @@ public class TransactionManagementServiceTest
     }
 
     @Test
+    public void movesAccountTransactionToAnotherAccount()
+    {
+        var client = new Client();
+        var sourceAccount = new Account("Cash");
+        sourceAccount.setCurrencyCode(CurrencyUnit.EUR);
+        var targetAccount = new Account("Savings");
+        targetAccount.setCurrencyCode(CurrencyUnit.EUR);
+        client.addAccount(sourceAccount);
+        client.addAccount(targetAccount);
+
+        var createRequest = new TransactionMutationDto();
+        createRequest.setTransactionType("ACCOUNT");
+        createRequest.setType("DEPOSIT");
+        createRequest.setOwnerUuid(sourceAccount.getUUID());
+        createRequest.setDateTime(LocalDateTime.of(2026, 5, 30, 10, 0));
+        createRequest.setAmount(100.0);
+
+        var created = TransactionManagementService.createTransaction(client, createRequest);
+        var transactionUuid = created.getTransaction().getUUID();
+
+        var updateRequest = new TransactionMutationDto();
+        updateRequest.setOwnerUuid(targetAccount.getUUID());
+
+        var updated = TransactionManagementService.updateTransaction(client, transactionUuid, updateRequest);
+
+        assertThat(updated.getTransaction().getUUID(), is(transactionUuid));
+        assertThat(updated.getOwner(), is(targetAccount));
+        assertThat(sourceAccount.getTransactions().isEmpty(), is(true));
+        assertThat(targetAccount.getTransactions().size(), is(1));
+        assertThat(targetAccount.getTransactions().get(0).getUUID(), is(transactionUuid));
+    }
+
+    @Test
+    public void movesAccountTransactionAndAlignsCurrencyToTargetAccount()
+    {
+        var client = new Client();
+        var sourceAccount = new Account("EUR Cash");
+        sourceAccount.setCurrencyCode(CurrencyUnit.EUR);
+        var targetAccount = new Account("USD Cash");
+        targetAccount.setCurrencyCode(CurrencyUnit.USD);
+        client.addAccount(sourceAccount);
+        client.addAccount(targetAccount);
+
+        var createRequest = new TransactionMutationDto();
+        createRequest.setTransactionType("ACCOUNT");
+        createRequest.setType("DEPOSIT");
+        createRequest.setOwnerUuid(sourceAccount.getUUID());
+        createRequest.setDateTime(LocalDateTime.of(2026, 5, 30, 10, 0));
+        createRequest.setAmount(100.0);
+
+        var created = TransactionManagementService.createTransaction(client, createRequest);
+        var transactionUuid = created.getTransaction().getUUID();
+
+        var updateRequest = new TransactionMutationDto();
+        updateRequest.setOwnerUuid(targetAccount.getUUID());
+
+        var updated = TransactionManagementService.updateTransaction(client, transactionUuid, updateRequest);
+
+        assertThat(updated.getOwner(), is(targetAccount));
+        assertThat(updated.getTransaction().getCurrencyCode(), is(CurrencyUnit.USD));
+        assertThat(sourceAccount.getTransactions().isEmpty(), is(true));
+        assertThat(targetAccount.getTransactions().size(), is(1));
+    }
+
+    @Test
+    public void movesBuyTransactionToAnotherSecurityAccount()
+    {
+        var client = new Client();
+        var sourceAccount = new Account("Cash A");
+        sourceAccount.setCurrencyCode(CurrencyUnit.EUR);
+        var targetAccount = new Account("Cash B");
+        targetAccount.setCurrencyCode(CurrencyUnit.EUR);
+        var sourcePortfolio = new Portfolio("Broker A");
+        sourcePortfolio.setReferenceAccount(sourceAccount);
+        var targetPortfolio = new Portfolio("Broker B");
+        targetPortfolio.setReferenceAccount(targetAccount);
+        var security = new Security("Apple Inc.", CurrencyUnit.EUR);
+        client.addAccount(sourceAccount);
+        client.addAccount(targetAccount);
+        client.addPortfolio(sourcePortfolio);
+        client.addPortfolio(targetPortfolio);
+        client.addSecurity(security);
+
+        var createRequest = new TransactionMutationDto();
+        createRequest.setTransactionType("PORTFOLIO");
+        createRequest.setType("BUY");
+        createRequest.setOwnerUuid(sourcePortfolio.getUUID());
+        createRequest.setSecurityUuid(security.getUUID());
+        createRequest.setDateTime(LocalDateTime.of(2026, 5, 30, 11, 0));
+        createRequest.setAmount(1000.0);
+        createRequest.setShares(10.0);
+
+        var created = TransactionManagementService.createTransaction(client, createRequest);
+        var transactionUuid = created.getTransaction().getUUID();
+
+        var updateRequest = new TransactionMutationDto();
+        updateRequest.setTransactionType("PORTFOLIO");
+        updateRequest.setOwnerUuid(targetPortfolio.getUUID());
+
+        var updated = TransactionManagementService.updateTransaction(client, transactionUuid, updateRequest);
+        var portfolioTransaction = (PortfolioTransaction) updated.getTransaction();
+
+        assertThat(updated.getTransaction().getUUID(), is(transactionUuid));
+        assertThat(updated.getOwner(), is(targetPortfolio));
+        assertThat(sourcePortfolio.getTransactions().isEmpty(), is(true));
+        assertThat(targetPortfolio.getTransactions().size(), is(1));
+        assertThat(sourceAccount.getTransactions().isEmpty(), is(true));
+        assertThat(targetAccount.getTransactions().size(), is(1));
+        assertThat(portfolioTransaction.getCrossEntry().getCrossOwner(portfolioTransaction), is(targetAccount));
+    }
+
+    @Test
+    public void movesDeliveryTransactionToAnotherSecurityAccount()
+    {
+        var client = new Client();
+        var sourceAccount = new Account("Cash A");
+        sourceAccount.setCurrencyCode(CurrencyUnit.EUR);
+        var targetAccount = new Account("Cash B");
+        targetAccount.setCurrencyCode(CurrencyUnit.EUR);
+        var sourcePortfolio = new Portfolio("Broker A");
+        sourcePortfolio.setReferenceAccount(sourceAccount);
+        var targetPortfolio = new Portfolio("Broker B");
+        targetPortfolio.setReferenceAccount(targetAccount);
+        var security = new Security("Apple Inc.", CurrencyUnit.EUR);
+        client.addAccount(sourceAccount);
+        client.addAccount(targetAccount);
+        client.addPortfolio(sourcePortfolio);
+        client.addPortfolio(targetPortfolio);
+        client.addSecurity(security);
+
+        var createRequest = new TransactionMutationDto();
+        createRequest.setTransactionType("PORTFOLIO");
+        createRequest.setType("DELIVERY_INBOUND");
+        createRequest.setOwnerUuid(sourcePortfolio.getUUID());
+        createRequest.setSecurityUuid(security.getUUID());
+        createRequest.setDateTime(LocalDateTime.of(2026, 5, 30, 11, 0));
+        createRequest.setAmount(500.0);
+        createRequest.setShares(5.0);
+
+        var created = TransactionManagementService.createTransaction(client, createRequest);
+        var transactionUuid = created.getTransaction().getUUID();
+
+        var updateRequest = new TransactionMutationDto();
+        updateRequest.setTransactionType("PORTFOLIO");
+        updateRequest.setOwnerUuid(targetPortfolio.getUUID());
+
+        var updated = TransactionManagementService.updateTransaction(client, transactionUuid, updateRequest);
+
+        assertThat(updated.getTransaction().getUUID(), is(transactionUuid));
+        assertThat(updated.getOwner(), is(targetPortfolio));
+        assertThat(sourcePortfolio.getTransactions().isEmpty(), is(true));
+        assertThat(targetPortfolio.getTransactions().size(), is(1));
+        assertThat(sourceAccount.getTransactions().isEmpty(), is(true));
+        assertThat(targetAccount.getTransactions().isEmpty(), is(true));
+    }
+
+    @Test
     public void findsTransactionByUuid()
     {
         var client = new Client();

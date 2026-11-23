@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -42,6 +43,10 @@ public final class SecurityPerformanceSnapshotCacheService
     private static final Logger logger = LoggerFactory.getLogger(SecurityPerformanceSnapshotCacheService.class);
 
     private static final SecurityPerformanceSnapshotCacheService INSTANCE = new SecurityPerformanceSnapshotCacheService();
+
+    private static final Class<? extends SecurityPerformanceIndicator> COSTS = SecurityPerformanceIndicator.Costs.class;
+    private static final Class<? extends SecurityPerformanceIndicator> DIVIDENDS = SecurityPerformanceIndicator.Dividends.class;
+    private static final Class<? extends SecurityPerformanceIndicator> RATE_OF_RETURN = SecurityPerformanceIndicator.RateOfReturn.class;
 
     private final ConcurrentMap<String, SnapshotCacheEntry> cache = new ConcurrentHashMap<>();
 
@@ -186,7 +191,7 @@ public final class SecurityPerformanceSnapshotCacheService
 
         SecurityPerformanceSnapshotBundle ensureUpToDate(String portfolioId, Client client, List<Security> requiredSecurities)
         {
-            logger.info("Ensuring up to date security performance snapshots for portfolio {}", portfolioId); //$NON-NLS-1$
+            logger.debug("Ensuring up to date security performance snapshots for portfolio {}", portfolioId); //$NON-NLS-1$
             
             // Check if we need to verify security records
             boolean needsSecurityCheck = requiredSecurities != null && !requiredSecurities.isEmpty();
@@ -197,7 +202,7 @@ public final class SecurityPerformanceSnapshotCacheService
             {
                 if (!needsSecurityCheck || hasAllSecurityRecords(snapshots, requiredSecurities, client))
                 {
-                    logger.info("Returning cached security performance snapshots for portfolio {}", portfolioId); //$NON-NLS-1$
+                    logger.debug("Returning cached security performance snapshots for portfolio {}", portfolioId); //$NON-NLS-1$
                     return snapshots;
                 }
                 // If securities are missing, fall through to rebuild
@@ -213,7 +218,7 @@ public final class SecurityPerformanceSnapshotCacheService
                 {
                     if (!needsSecurityCheck || hasAllSecurityRecords(snapshots, requiredSecurities, client))
                     {
-                        logger.info("Returning cached security performance snapshots for portfolio {}", portfolioId); //$NON-NLS-1$
+                        logger.debug("Returning cached security performance snapshots for portfolio {}", portfolioId); //$NON-NLS-1$
                         return snapshots;
                     }
                     // Force rebuild by clearing snapshots
@@ -315,6 +320,7 @@ public final class SecurityPerformanceSnapshotCacheService
 
     private static SecurityPerformanceSnapshotBundle buildSnapshots(Client client)
     {
+        long startedAt = System.currentTimeMillis();
         try
         {
             ExchangeRateProviderFactory factory = new ExchangeRateProviderFactory(client);
@@ -328,11 +334,22 @@ public final class SecurityPerformanceSnapshotCacheService
 
             Interval dailyInterval = Interval.of(today.minusDays(2), today);
 
-            SecurityPerformanceSnapshot allTime = SecurityPerformanceSnapshot.create(client, converter, allTimeInterval, false);
-            SecurityPerformanceSnapshot yearToDate = SecurityPerformanceSnapshot.create(client, converter, ytdInterval, false);
-            SecurityPerformanceSnapshot daily = SecurityPerformanceSnapshot.create(client, converter, dailyInterval, false);
+            CompletableFuture<SecurityPerformanceSnapshot> allTimeFuture = CompletableFuture.supplyAsync(
+                            () -> SecurityPerformanceSnapshot.create(client, converter, allTimeInterval, false, COSTS,
+                                            DIVIDENDS));
+            CompletableFuture<SecurityPerformanceSnapshot> yearToDateFuture = CompletableFuture.supplyAsync(
+                            () -> SecurityPerformanceSnapshot.create(client, converter, ytdInterval, false, COSTS));
+            CompletableFuture<SecurityPerformanceSnapshot> dailyFuture = CompletableFuture.supplyAsync(
+                            () -> SecurityPerformanceSnapshot.create(client, converter, dailyInterval, false, COSTS,
+                                            RATE_OF_RETURN));
 
-            return new SecurityPerformanceSnapshotBundle(allTime, yearToDate, daily);
+            SecurityPerformanceSnapshotBundle bundle = new SecurityPerformanceSnapshotBundle(allTimeFuture.join(),
+                            yearToDateFuture.join(), dailyFuture.join());
+
+            logger.info("Built security performance snapshots for portfolio in {} ms", //$NON-NLS-1$
+                            System.currentTimeMillis() - startedAt);
+
+            return bundle;
         }
         catch (Exception ex)
         {
@@ -350,17 +367,19 @@ public final class SecurityPerformanceSnapshotCacheService
                 continue;
 
             logger.info("Refreshing security performance snapshots for security {}", security.getName()); //$NON-NLS-1$
-            refreshRecord(bundle.allTime, security);
-            refreshRecord(bundle.yearToDate, security);
-            refreshRecord(bundle.daily, security);
+            refreshRecord(bundle.allTime, security, COSTS, DIVIDENDS);
+            refreshRecord(bundle.yearToDate, security, COSTS);
+            refreshRecord(bundle.daily, security, COSTS, RATE_OF_RETURN);
         }
     }
 
-    private static void refreshRecord(SecurityPerformanceSnapshot snapshot, Security security)
+    @SafeVarargs
+    private static void refreshRecord(SecurityPerformanceSnapshot snapshot, Security security,
+                    Class<? extends SecurityPerformanceIndicator>... indicators)
     {
         snapshot.getRecord(security).ifPresent(record -> {
             updateValuationAtEndPositions(record, security);
-            record.calculate();
+            record.calculate(indicators);
         });
     }
 

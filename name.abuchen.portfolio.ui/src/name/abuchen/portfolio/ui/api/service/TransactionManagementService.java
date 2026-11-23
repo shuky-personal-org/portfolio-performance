@@ -245,7 +245,7 @@ public final class TransactionManagementService
                             "Transfer transactions cannot be updated via API. Delete and recreate instead.");
         }
 
-        var account = (Account) existing.getOwner();
+        var account = moveAccountTransactionIfNeeded(client, (Account) existing.getOwner(), transaction, request);
 
         var dateTime = request.getDateTime();
         var amount = request.getAmount() != null ? toInternalAmount(request.getAmount()) : null;
@@ -278,13 +278,12 @@ public final class TransactionManagementService
         if (request.getSource() != null)
             transaction.setSource(source);
 
-        return existing;
+        return new TransactionPair<>(account, transaction);
     }
 
     private static TransactionPair<?> updatePortfolioTransaction(Client client, TransactionPair<?> existing,
                     PortfolioTransaction transaction, TransactionMutationDto request)
     {
-        var portfolio = (Portfolio) existing.getOwner();
         var crossEntry = transaction.getCrossEntry();
 
         if (crossEntry != null && !(crossEntry instanceof BuySellEntry))
@@ -292,6 +291,9 @@ public final class TransactionManagementService
             throw new IllegalArgumentException(
                             "Transfer transactions cannot be updated via API. Delete and recreate instead.");
         }
+
+        var portfolio = movePortfolioTransactionIfNeeded(client, (Portfolio) existing.getOwner(), transaction,
+                        request);
 
         if (crossEntry instanceof BuySellEntry buySellEntry)
         {
@@ -355,7 +357,76 @@ public final class TransactionManagementService
         if (request.getSource() != null)
             transaction.setSource(source);
 
-        return existing;
+        return new TransactionPair<>(portfolio, transaction);
+    }
+
+    private static Account moveAccountTransactionIfNeeded(Client client, Account currentAccount,
+                    AccountTransaction transaction, TransactionMutationDto request)
+    {
+        if (request.getOwnerUuid() == null || request.getOwnerUuid().isBlank()
+                        || request.getOwnerUuid().equals(currentAccount.getUUID()))
+            return currentAccount;
+
+        var newAccount = AccountManagementService.findAccount(client, request.getOwnerUuid().trim());
+        currentAccount.shallowDeleteTransaction(transaction, client);
+        if (!newAccount.getCurrencyCode().equals(transaction.getCurrencyCode()))
+            transaction.setCurrencyCode(newAccount.getCurrencyCode());
+        newAccount.addTransaction(transaction);
+        return newAccount;
+    }
+
+    private static Portfolio movePortfolioTransactionIfNeeded(Client client, Portfolio currentPortfolio,
+                    PortfolioTransaction transaction, TransactionMutationDto request)
+    {
+        var targetPortfolio = currentPortfolio;
+        if (request.getOwnerUuid() != null && !request.getOwnerUuid().isBlank()
+                        && !request.getOwnerUuid().equals(currentPortfolio.getUUID()))
+        {
+            targetPortfolio = SecurityAccountManagementService.findSecurityAccount(client,
+                            request.getOwnerUuid().trim());
+        }
+
+        if (transaction.getCrossEntry() instanceof BuySellEntry buySellEntry)
+        {
+            var currentAccount = buySellEntry.getAccount();
+            var targetAccount = currentAccount;
+            var ownerChanging = targetPortfolio != currentPortfolio;
+            var accountRequested = request.getAccountUuid() != null && !request.getAccountUuid().isBlank();
+            if (ownerChanging || accountRequested)
+                targetAccount = resolveAccount(client, targetPortfolio, request.getAccountUuid());
+
+            if (targetPortfolio != currentPortfolio)
+            {
+                currentPortfolio.shallowDeleteTransaction(transaction, client);
+                buySellEntry.setPortfolio(targetPortfolio);
+                targetPortfolio.addTransaction(transaction);
+            }
+
+            if (targetAccount != currentAccount)
+            {
+                currentAccount.shallowDeleteTransaction(buySellEntry.getAccountTransaction(), client);
+                buySellEntry.setAccount(targetAccount);
+                if (!targetAccount.getCurrencyCode().equals(buySellEntry.getAccountTransaction().getCurrencyCode()))
+                    buySellEntry.setCurrencyCode(targetAccount.getCurrencyCode());
+                targetAccount.addTransaction(buySellEntry.getAccountTransaction());
+            }
+
+            return targetPortfolio;
+        }
+
+        if (targetPortfolio != currentPortfolio)
+        {
+            currentPortfolio.shallowDeleteTransaction(transaction, client);
+            targetPortfolio.addTransaction(transaction);
+            if (request.getCurrencyCode() == null && targetPortfolio.getReferenceAccount() != null
+                            && !targetPortfolio.getReferenceAccount().getCurrencyCode()
+                                            .equals(transaction.getCurrencyCode()))
+            {
+                transaction.setCurrencyCode(targetPortfolio.getReferenceAccount().getCurrencyCode());
+            }
+        }
+
+        return targetPortfolio;
     }
 
     private static void validateShareTransactionRequest(Client client, TransactionMutationDto request)
