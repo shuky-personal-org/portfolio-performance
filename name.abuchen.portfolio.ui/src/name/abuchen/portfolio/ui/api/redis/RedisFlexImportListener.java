@@ -356,7 +356,7 @@ public class RedisFlexImportListener
 
             TwsInstanceEventMatcher.logFilterDecision(logger, CHANNEL_FLEX_IMPORT_READY, type,
                             eventInstanceId, targetPortfolioId, client);
-            if (!TwsInstanceEventMatcher.matches(eventInstanceId, client))
+            if (!TwsInstanceEventMatcher.applies(eventInstanceId, client))
             {
                 logger.info("Skipping Redis flex import for portfolio {} from TWS instance {}", targetPortfolioId,
                                 eventInstanceId);
