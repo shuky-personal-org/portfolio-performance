@@ -58,8 +58,6 @@ public class PortfolioFileService {
     private static final String DEFAULT_PORTFOLIO_EXTENSION = ".portfolio";
     private static final String XML_EXTENSION = ".xml";
     private static final String DELETED_DIRECTORY_NAME = "deleted";
-    private static final Set<String> SUPPORTED_TWS_INSTANCE_IDS = Set.of(
-                    ClientProperties.DEFAULT_TWS_INSTANCE_ID, "primary", "secondary");
     
     // Singleton instance
     private static PortfolioFileService instance;
@@ -704,7 +702,7 @@ public class PortfolioFileService {
      * Update the TWS instance assignment custom attribute of a portfolio and persist the change.
      *
      * @param fileId The portfolio file ID
-     * @param twsInstanceId TWS instance ID (default, primary, secondary)
+     * @param twsInstanceId TWS instance ID (default, primary, secondary, or one listed in TWS_INSTANCE_IDS)
      * @param password Optional password for encrypted files when not already cached
      * @return Updated portfolio file information
      * @throws IOException if the portfolio cannot be loaded or saved
@@ -750,7 +748,7 @@ public class PortfolioFileService {
         }
 
         String normalized = twsInstanceId.trim();
-        if (!SUPPORTED_TWS_INSTANCE_IDS.contains(normalized)) {
+        if (!TwsInstanceIds.isSupported(normalized)) {
             throw new IllegalArgumentException("Unsupported TWS instance ID: " + normalized);
         }
 
